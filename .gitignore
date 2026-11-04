@@ -1,0 +1,28 @@
+# Build output
+dist/
+bin/
+obj/
+*.exe
+
+# Test visual snapshots
+test/visual/
+
+# Dev/preview artifacts
+frames-preview/
+frames3/
+preview-run/
+*.png
+*.gif
+settings.backup.json
+
+# Tools scratch output
+tools/*.png
+tools/*.gif
+
+# VS / Rider
+.vs/
+.idea/
+
+# OS
+Thumbs.db
+desktop.ini
