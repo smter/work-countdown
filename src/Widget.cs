@@ -292,9 +292,12 @@ namespace WorkCountdown
 
         private static string DescribeSnapshot(AttendanceSnapshot s)
         {
-            if (s.clockOut.HasValue) return "今日 " + s.clockIn.GetValueOrDefault().ToString("HH:mm") + " → " + s.clockOut.Value.ToString("HH:mm") + " 已下班";
-            if (s.clockIn.HasValue) return "今日 " + s.clockIn.Value.ToString("HH:mm") + " 上班打卡";
-            return "今日暂无打卡记录";
+            string text;
+            if (s.clockOut.HasValue) text = "今日 " + s.clockIn.GetValueOrDefault().ToString("HH:mm") + " → " + s.clockOut.Value.ToString("HH:mm") + " 已下班";
+            else if (s.clockIn.HasValue) text = "今日 " + s.clockIn.Value.ToString("HH:mm") + " 上班打卡";
+            else text = "今日暂无打卡记录";
+            if (!string.IsNullOrEmpty(s.note)) text += "\r\n" + s.note;
+            return text;
         }
 
         // ---------------- 日程提醒 ----------------

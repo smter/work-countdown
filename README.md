@@ -78,7 +78,7 @@
 
 ![动效设置](settings-effects.png)
 
-验证：97 条逻辑断言；600 个离屏渲染组合（3 种 DPI、4 种特效、收起/展开、会议/日程、进退场边界、长文本与低动效）。截图是程序真实绘制输出，但本轮模型不支持图片输入，未声称做过人工视觉验收。
+验证：103 条逻辑断言；600 个离屏渲染组合（3 种 DPI、4 种特效、收起/展开、会议/日程、进退场边界、长文本与低动效）。截图是程序真实绘制输出，但本轮模型不支持图片输入，未声称做过人工视觉验收。
 
 ## 显示与缩放
 
@@ -220,7 +220,7 @@ lark-cli auth login --scope "im:message.send_as_user"
 | `src/Program.cs` | 入口、单实例、`--portable` / `--settings` |
 | `package.ps1` | 打包脚本：生成 install/uninstall 脚本、说明和 zip |
 | `assets/app.manifest` | DPI 感知清单（构建时生成并嵌入 exe） |
-| `test/Test.cs` | 策略、状态与日程提醒的断言测试（97 条，全绿；另有 600 个离屏渲染组合） |
+| `test/Test.cs` | 策略、状态与日程提醒的断言测试（103 条，全绿；另有 600 个离屏渲染组合） |
 | `tools/shot.ps1` | 用 `PrintWindow` 抓悬浮窗画面（分层窗口用 BitBlt 截不到） |
 
 > `build.ps1` / `package.ps1` 必须保存成 **UTF-8 带 BOM**，否则 PowerShell 5 会按 GBK 解析中文注释并报「字符串缺少终止符」。

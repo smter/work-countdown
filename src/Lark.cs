@@ -189,12 +189,10 @@ namespace WorkCountdown
                     if (LooksClockOut(norm))
                     {
                         if (!lastOut.HasValue || when > lastOut.Value) lastOut = when;
-                        note = "下班卡 " + when.ToString("HH:mm", CultureInfo.InvariantCulture);
                     }
                     else if (LooksClockIn(norm))
                     {
                         if (!firstIn.HasValue || when < firstIn.Value) firstIn = when;
-                        note = "上班卡 " + when.ToString("HH:mm", CultureInfo.InvariantCulture);
                     }
                     continue;
                 }
@@ -228,8 +226,9 @@ namespace WorkCountdown
             snap.clockOut = lastOut ?? botOut;
             if (snap.clockOut.HasValue && snap.clockIn.HasValue && snap.clockOut.Value <= snap.clockIn.Value)
                 snap.clockOut = null;
+            // note 只留机器人自己给出的预计下班：本程序不采信它，但同步气泡里给用户对照
+            if (botEstEnd.HasValue) note = "机器人预计 " + botEstEnd.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
             snap.note = note;
-            if (botEstEnd.HasValue && snap.note == null) snap.note = "预计下班 " + botEstEnd.Value.ToString("HH:mm", CultureInfo.InvariantCulture);
             snap.ok = true;
             return snap;
         }

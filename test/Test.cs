@@ -283,6 +283,24 @@ internal static class Test
         Check("空飞书配置可归一化", (nullPrefs.lark != null && !nullPrefs.lark.enabled).ToString(), "True");
         Check("空 UI 配置恢复默认", nullPrefs.ui.reminderEffect + "/" + nullPrefs.ui.reducedMotion + "/" + nullPrefs.ui.reminderHoldSeconds, "glow/False/6");
 
+        // 20. 缺字段的配置与新建对象同一天：兜底不该悄悄换成另一套班次。
+        Check("缺字段默认固定班次", nullPrefs.mode, "fixed");
+        Check("缺字段默认每日应勤", nullPrefs.flexMinutes.ToString(), "480");
+
+        // 21. 「达标」是到点的判决，不等于工时够了：两把尺子并排放。
+        var s21 = new Settings();
+        s21.lark.enabled = true;            // 有打卡源，迟到才看得出差别
+        s21.lark.chatId = "oc_test";
+        var snap21 = new AttendanceSnapshot();
+        snap21.ok = true;
+        snap21.clockIn = new DateTime(2026, 11, 3, 10, 0, 0);   // 固定班次 09:00，迟到一小时
+        var st21 = StatusBuilder.Build(s21, snap21, new DateTime(2026, 11, 3, 10, 0, 0), Themes.Get("midnight"));
+        Check("迟到时进度按钟表走", st21.progress.ToString("0.000"), "0.111");
+        Check("迟到时在岗时长照实", st21.extra, "已工作 0s · 应勤 9h00m");
+        var st21b = StatusBuilder.Build(s21, snap21, new DateTime(2026, 11, 3, 18, 1, 0), Themes.Get("midnight"));
+        Check("到点即达标", st21b.state.ToString(), "Overtime");
+        Check("达标同时给出工时对照", st21b.extra, "工时 8h01m / 应勤 9h00m · 下班后发「2」记录");
+
         Console.WriteLine();
         Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");
         Environment.Exit(failures == 0 ? 0 : 1);

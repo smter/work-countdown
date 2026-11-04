@@ -148,10 +148,8 @@ namespace WorkCountdown
     {
         public int x { get; set; }
         public int y { get; set; }
-        public bool docked { get; set; }
         public string edge { get; set; }        // right | left | free
-        public int opacity { get; set; }        // 40..100
-        public string accent { get; set; }      // #RRGGBB（旧字段，保留兼容）
+        public int opacity { get; set; }        // 30..100
         public string theme { get; set; }       // 主题 id
         public bool alwaysOnTop { get; set; }
         public int autoCollapseSeconds { get; set; }
@@ -164,10 +162,8 @@ namespace WorkCountdown
         {
             x = -1;
             y = 260;
-            docked = true;
             edge = "right";
             opacity = 94;
-            accent = "#4C8DFF";
             theme = "midnight";
             alwaysOnTop = true;
             autoCollapseSeconds = 20;
@@ -403,10 +399,10 @@ namespace WorkCountdown
     {
         public static void Normalize(this Settings s)
         {
-            if (s.mode != "fixed" && s.mode != "flex") s.mode = "flex";
+            if (s.mode != "fixed" && s.mode != "flex") s.mode = "fixed";   // 与构造器一致：缺字段不该悄悄变成弹性工时
             if (string.IsNullOrWhiteSpace(s.startTime)) s.startTime = "09:00";
             if (string.IsNullOrWhiteSpace(s.endTime)) s.endTime = "18:00";
-            if (s.flexMinutes <= 0 || s.flexMinutes > 24 * 60) s.flexMinutes = 630;
+            if (s.flexMinutes <= 0 || s.flexMinutes > 24 * 60) s.flexMinutes = 480;
             if (string.IsNullOrWhiteSpace(s.lunchStart)) s.lunchStart = "11:50";
             if (string.IsNullOrWhiteSpace(s.lunchEnd)) s.lunchEnd = "13:30";
             if (s.workdays == null || s.workdays.Length != 7) s.workdays = new bool[] { false, true, true, true, true, true, false };
@@ -425,7 +421,6 @@ namespace WorkCountdown
             if (s.lark.pollMinutes < 1) s.lark.pollMinutes = 5;
             if (s.ui.opacity < 30) s.ui.opacity = 94;
             if (s.ui.opacity > 100) s.ui.opacity = 100;
-            if (string.IsNullOrWhiteSpace(s.ui.accent)) s.ui.accent = "#4C8DFF";
             if (string.IsNullOrWhiteSpace(s.ui.theme)) s.ui.theme = "midnight";
             bool known = false;
             foreach (var t in Themes.All) { if (t.id == s.ui.theme) { known = true; break; } }
@@ -993,7 +988,12 @@ namespace WorkCountdown
             st.headline = "已达标";
             st.bigLabel = "可下班 · 已超";
             st.big = Policy.Clock(now - target);
-            st.extra = "在岗 " + Policy.CompactDuration(now - inTime.Value) + " · 下班后发「2」记录";
+            // 「达标」是到点的判决，不等于工时够了：把两把尺子并排放，迟到的人能看出还差多少
+            int requiredO = plan.mode == "fixed" ? (int)Math.Round((plan.fixedEnd - plan.suggestStart).TotalMinutes) : plan.requiredMinutes;
+            TimeSpan served = now - inTime.Value;
+            st.extra = served.TotalMinutes >= requiredO
+                ? "工时已达标 · 应勤 " + Policy.Hm(requiredO) + " · 下班后发「2」记录"
+                : "工时 " + Policy.CompactDuration(served) + " / 应勤 " + Policy.CompactDuration(TimeSpan.FromMinutes(requiredO)) + " · 下班后发「2」记录";
             st.accent = theme.success;
             return st;
         }
