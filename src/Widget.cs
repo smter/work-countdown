@@ -1103,11 +1103,14 @@ namespace WorkCountdown
             float period = sw * 2.8284271f;
             float start = rect.Left - rect.Height + (phase % period);
             if (start > rect.Left) start -= period;
+            // 线必须画出带子外再靠 clip 裁：Pen 的平头端帽垂直于线身，停在边上会留下 45° 的三角缺口，
+            // 条纹就贴不齐上下沿。两端各甩出 over，交点全在带子外，边缘自然被裁成一条横直线。
+            float over = rect.Height + sw;
             var saved = g.Save();
             g.SetClip(rect, CombineMode.Intersect);
             using (var pen = new Pen(color, sw))
-                for (float x = start; x < rect.Right + rect.Height + period; x += period)
-                    g.DrawLine(pen, x, rect.Top, x + rect.Height, rect.Bottom);
+                for (float x = start - over; x < rect.Right + rect.Height + period; x += period)
+                    g.DrawLine(pen, x, rect.Top - over, x + rect.Height + over * 2, rect.Bottom + over);
             g.Restore(saved);
         }
 
