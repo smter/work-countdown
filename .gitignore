@@ -33,3 +33,6 @@ desktop.ini
 !test/baseline/*.png
 !docs/regression/*.png
 !docs/regression/review/*.png
+
+# 代码索引工具（codebase-memory-mcp）的本地库
+.codebase-memory/

@@ -44,6 +44,33 @@ class VisualCheck {
     Call(form,"OnFormClosing",new FormClosingEventArgs(CloseReason.None,false));
    }
   }
+  // 终盘告警态（ADR 0006）：3 种 DPI × 展开/横条 × 下班/午休。
+  foreach(float adpi in new float[]{96,144,192})
+  foreach(bool acollapsed in new bool[]{false,true})
+  foreach(bool alunch in new bool[]{false,true}){
+   var aset=new Settings();aset.lark.enabled=false;aset.calendarEnabled=false;
+   aset.ui.edge="free";aset.ui.autoCollapseSeconds=0;aset.ui.theme="midnight";
+   aset.ui.finalAlert=true;aset.ui.alertAccent="theme";
+   aset.mode="fixed";aset.startTime="09:00";
+   aset.endTime=DateTime.Now.AddMinutes(5).ToString("HH:mm");
+   aset.ui.showLunch=alunch;
+   if(alunch){aset.lunchStart=DateTime.Now.AddMinutes(3).ToString("HH:mm");aset.lunchEnd=DateTime.Now.AddMinutes(90).ToString("HH:mm");}
+   using(var aform=new WidgetForm(new SettingsStore(),aset)){
+    Set(aform,"scale",adpi/96f);Set(aform,"collapsed",acollapsed);
+    aform.MinimumSize=Size.Empty;
+    aform.Size=new Size((int)((acollapsed?224:280)*adpi/96),(int)((acollapsed?68:186)*adpi/96));
+    Call(aform,"Recompute");
+    using(var abmp=new Bitmap(aform.Width,aform.Height)){
+     abmp.SetResolution(adpi,adpi);
+     using(var ag=Graphics.FromImage(abmp)) Call(aform,"OnPaint",new PaintEventArgs(ag,new Rectangle(0,0,aform.Width,aform.Height)));
+     if(full) abmp.Save(Path.Combine(dir,adpi+"-alert-"+(acollapsed?"col":"exp")+"-"+(alunch?"lunch":"eod")+".png"));
+     else if(adpi==144) abmp.Save(Path.Combine(dir,"alert-"+(acollapsed?"strip":"expanded")+"-"+adpi+".png"));
+    }
+    cases++;
+    Call(aform,"OnFormClosing",new FormClosingEventArgs(CloseReason.None,false));
+   }
+  }
+
   var demo=new Settings();demo.lark.enabled=false;demo.calendarEnabled=false;demo.ui.edge="free";demo.ui.reminderEffect="particles";
   using(var form=new WidgetForm(new SettingsStore(),demo)){
    Set(form,"scale",1.5f);Set(form,"collapsed",false);form.MinimumSize=Size.Empty;form.Size=new Size(420,315);Call(form,"Recompute");

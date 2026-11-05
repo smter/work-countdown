@@ -385,6 +385,66 @@ internal static class Test
         Check("提醒时间段 12pt", remindTimeFont.Size.ToString("0.#"), "12");
         Check("时间段区间算读数", reading("15:30–16:00").ToString(), "True");
 
+        // 24. 终盘（ADR 0006）：目标前十分钟切告警态；两个目标都在窗口里时更早的那个说了算。
+        var sa = new Settings();
+        sa.mode = "fixed";
+        sa.startTime = "09:00";
+        sa.endTime = "18:00";
+        sa.lunchStart = "11:50";
+        sa.lunchEnd = "13:30";
+        sa.ui.showLunch = true;
+        sa.ui.finalAlert = true;
+        sa.lark.enabled = false;
+
+        Func<int, int, int, CardStatus> At = (hh, mm, ss) =>
+            StatusBuilder.Build(sa, null, new DateTime(2026, 11, 3, hh, mm, ss), Themes.Get("midnight"));
+
+        Check("终盘 18:00 前 11 分钟没进", At(17, 49, 0).alert.ToString(), "False");
+        Check("终盘 18:00 前 10 分钟进入", At(17, 50, 0).alert.ToString(), "True");
+        Check("终盘 18:00 前 10 分钟文案", At(17, 50, 0).alertLabel, "距离下班");
+        Check("终盘 18:00 前 10 分钟目标", At(17, 50, 0).alertTargetText, "18:00");
+        Check("终盘下班不是午休", At(17, 50, 0).alertLunch.ToString(), "False");
+        Check("终盘英文标签", At(17, 50, 0).alertEn, "SHIFT END");
+
+        Check("午休终盘 11:40 进入", At(11, 40, 0).alert.ToString(), "True");
+        Check("午休终盘文案", At(11, 40, 0).alertLabel, "距离午休");
+        Check("午休终盘目标", At(11, 40, 0).alertTargetText, "11:50");
+        Check("午休终盘标记为午休", At(11, 40, 0).alertLunch.ToString(), "True");
+        Check("午休终盘英文标签", At(11, 40, 0).alertEn, "LUNCH BREAK");
+        Check("午休终盘 11:39 没进", At(11, 39, 0).alert.ToString(), "False");
+
+        // 两个目标都落在十分钟内：更早的那个说了算（午休 11:50 先于下班 12:00）
+        var sb = new Settings();
+        sb.mode = "fixed"; sb.startTime = "09:00"; sb.endTime = "12:00";
+        sb.lunchStart = "11:50"; sb.lunchEnd = "13:30"; sb.ui.showLunch = true; sb.lark.enabled = false;
+        var both = StatusBuilder.Build(sb, null, new DateTime(2026, 11, 3, 11, 45, 0), Themes.Get("midnight"));
+        Check("两个目标都在窗口里取更早的", both.alertLabel, "距离午休");
+
+        // 到点之后、已下班、休息日都不该进终盘
+        Check("到点后不进终盘", At(18, 0, 0).alert.ToString(), "False");
+        Check("已达标后不进终盘", At(18, 30, 0).alert.ToString(), "False");
+        var saturday = StatusBuilder.Build(sa, null, new DateTime(2026, 11, 7, 17, 55, 0), Themes.Get("midnight"));
+        Check("休息日不进终盘", saturday.alert.ToString(), "False");
+
+        // 开关：关掉终盘告警，或关掉午休倒计时，都不进
+        sa.ui.finalAlert = false;
+        Check("关掉终盘开关就没终盘", At(17, 55, 0).alert.ToString(), "False");
+        sa.ui.finalAlert = true;
+        sa.ui.showLunch = false;
+        Check("关掉午休倒计时就没有午休终盘", At(11, 40, 0).alert.ToString(), "False");
+        sa.ui.showLunch = true;
+
+        // 老配置缺字段时默认开启；告警色非法值回落到跟随主题
+        var sLegacy = new Settings();
+        sLegacy.ui.finalAlert = null;
+        sLegacy.ui.alertAccent = "明天再说";
+        sLegacy.Normalize();
+        Check("老配置缺终盘字段默认开", sLegacy.ui.finalAlert.ToString(), "True");
+        Check("告警色非法回落", sLegacy.ui.alertAccent, "theme");
+        sLegacy.ui.alertAccent = "red";
+        sLegacy.Normalize();
+        Check("告警色合法保留", sLegacy.ui.alertAccent, "red");
+
         Console.WriteLine();
         Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");
         Environment.Exit(failures == 0 ? 0 : 1);

@@ -38,6 +38,9 @@ namespace WorkCountdown
         private NumericUpDown numAutoCollapse;
         private ComboBox cmbReminderEffect;
         private CheckBox cbReducedMotion;
+        private CheckBox cbFinalAlert;
+        private ComboBox cmbAlertAccent;
+        private static readonly string[] AlertAccentIds = { "theme", "red", "amber" };
         private NumericUpDown numReminderHold;
         private static readonly string[] ReminderEffectIds = { "none", "glow", "particles", "aurora" };
         private CheckBox cbCalendar;
@@ -612,6 +615,14 @@ namespace WorkCountdown
             cmbReminderEffect.SetBounds(76, 90, 140, 26);
             cmbReminderEffect.SelectedIndex = 1;
             g.Controls.Add(cmbReminderEffect);
+
+            g.Controls.Add(Lbl("告警色", 232, 90, 52, 26));
+            cmbAlertAccent = new ComboBox();
+            cmbAlertAccent.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbAlertAccent.Items.AddRange(new object[] { "跟随主题", "红警", "琥珀" });
+            cmbAlertAccent.SetBounds(288, 90, 108, 26);
+            cmbAlertAccent.SelectedIndex = 0;
+            g.Controls.Add(cmbAlertAccent);
             g.Controls.Add(Hint("无：关闭装饰特效；柔光 / 粒子 / 极光：不同提醒氛围。", 14, 120, 466, 22));
 
             cbReducedMotion = new CheckBox();
@@ -624,6 +635,11 @@ namespace WorkCountdown
             numReminderHold = Num(6, 76, 178, 56, 3, 20);
             g.Controls.Add(numReminderHold);
             g.Controls.Add(Lbl("秒（3–20）", 140, 178, 100, 24));
+
+            cbFinalAlert = new CheckBox();
+            cbFinalAlert.Text = "终盘告警（前十分钟）";
+            cbFinalAlert.SetBounds(240, 178, 200, 22);
+            g.Controls.Add(cbFinalAlert);
 
             var g2 = CardBox("配置备份", 8, 408, 492, 120);
             g2.Controls.Add(Hint("换电脑或给同事复用：导出一份，带过去再导入。", 14, 28, 466, 18));
@@ -756,6 +772,9 @@ namespace WorkCountdown
             int effectIndex = Array.IndexOf(ReminderEffectIds, s.ui.reminderEffect);
             cmbReminderEffect.SelectedIndex = effectIndex >= 0 ? effectIndex : 1;
             cbReducedMotion.Checked = s.ui.reducedMotion;
+            cbFinalAlert.Checked = s.ui.finalAlert != false;
+            int alertIndex = Array.IndexOf(AlertAccentIds, s.ui.alertAccent);
+            cmbAlertAccent.SelectedIndex = alertIndex >= 0 ? alertIndex : 0;
             numReminderHold.Value = Math.Max(3, Math.Min(20, s.ui.reminderHoldSeconds));
         }
 
@@ -908,6 +927,8 @@ namespace WorkCountdown
             s.ui.showLunch = cbShowLunch.Checked;
             s.ui.reminderEffect = ReminderEffectIds[cmbReminderEffect.SelectedIndex >= 0 ? cmbReminderEffect.SelectedIndex : 1];
             s.ui.reducedMotion = cbReducedMotion.Checked;
+            s.ui.finalAlert = cbFinalAlert.Checked;
+            s.ui.alertAccent = AlertAccentIds[cmbAlertAccent.SelectedIndex >= 0 ? cmbAlertAccent.SelectedIndex : 0];
             s.ui.reminderHoldSeconds = (int)numReminderHold.Value;
             if (cbAutoStart.Checked != Startup.IsEnabled()) Startup.SetEnabled(cbAutoStart.Checked);
 

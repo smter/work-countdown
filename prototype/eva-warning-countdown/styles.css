@@ -1,0 +1,421 @@
+
+/* ============================================================
+   原型：作戦開始 — EVA 警告态倒计时
+   ⚠ 一次性原型，只用于评审视觉，不上主分支。
+   尺寸严格按 WinForms 卡片的 DIP：280 × 186（展开、无午休行）。
+   ============================================================ */
+
+@font-face {
+  font-family: "Maple Mono NF CN";
+  src: url("../../fonts/MapleMono-NF-CN-ExtraBold-subset.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+@font-face {
+  font-family: "Sarasa Mono SC";
+  src: url("../../fonts/SarasaMonoSC-SemiBold-subset.ttf") format("truetype");
+  font-weight: 100 900;
+  font-display: block;
+}
+
+:root {
+  --acc: #4c8dff;
+  --acc-rgb: 76, 141, 255;
+  --success: #46d39a;
+  --ink: #e8edf7;
+  --mute: rgba(232, 237, 247, 0.56);
+  --dim: rgba(232, 237, 247, 0.34);
+  --bg0: #05060a;
+  --scale: 2;
+  --haz-dur: 2.6s;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  background: #0b0d12;
+  color: var(--ink);
+  font-family: "Sarasa Mono SC", "Microsoft YaHei UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ---------- 桌面背景：只为把卡片放进上下文里 ---------- */
+.scene { position: fixed; inset: 0; display: flex; flex-direction: column; }
+.scene__wall {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(1200px 700px at 62% 18%, #1b2230 0%, #0d1118 55%, #07090d 100%),
+    #07090d;
+}
+.scene__wall::after {
+  content: ""; position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(700px 500px at 50% 45%, #000 20%, transparent 78%);
+}
+.scene__grain {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0.18; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='140' height='140'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/></filter><rect width='140' height='140' filter='url(%23n)' opacity='0.55'/></svg>");
+}
+
+.scene__head {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  padding: 18px 22px; font-size: 11px; letter-spacing: 0.06em;
+  color: rgba(232, 237, 247, 0.42);
+}
+.scene__head b {
+  font-family: "Maple Mono NF CN", monospace; font-size: 10px; letter-spacing: 0.22em;
+  color: var(--bg0); background: rgba(232, 237, 247, 0.55); padding: 3px 6px 2px; border-radius: 2px;
+}
+.scene__head em { font-style: normal; margin-left: auto; font-size: 10px; color: rgba(232, 237, 247, 0.26); }
+
+.board { position: relative; z-index: 2; flex: 1; display: grid; place-items: center; align-content: center; gap: 22px; }
+.board__slot { display: grid; place-items: center; width: calc(280px * var(--scale)); height: calc(186px * var(--scale)); }
+.board__cap {
+  font-size: 10.5px; letter-spacing: 0.08em; color: rgba(232, 237, 247, 0.34);
+  min-height: 14px; text-align: center;
+}
+
+/* ---------- 卡片本体（= 悬浮窗） ---------- */
+.card {
+  position: relative;
+  width: 280px; height: 186px;
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--bg0);
+  transform: scale(var(--scale));
+  transform-origin: center center;
+  box-shadow:
+    0 0 0 1px rgba(76, 141, 255, 0.10),
+    0 26px 60px -12px rgba(0, 0, 0, 0.85),
+    0 0 90px -30px rgba(var(--acc-rgb), 0.55);
+  transition: width 0.2s cubic-bezier(0.2, 0.9, 0.2, 1), height 0.2s cubic-bezier(0.2, 0.9, 0.2, 1), border-radius 0.2s ease;
+  isolate: isolate;
+}
+.card.is-collapsed { width: 224px; height: 68px; border-radius: 15px; }
+.card.is-collapsed .v { display: none !important; }
+.card.is-collapsed .strip { display: block; }
+
+/* 斜纹：所有变体共用一套条纹语法 */
+.haz {
+  --sw: 9px;
+  --per: calc(var(--sw) * 2 * 1.41421356);
+  background-color: #000;
+  background-image: repeating-linear-gradient(315deg, var(--acc) 0 var(--sw), #000 var(--sw) calc(var(--sw) * 2));
+  animation: hazslide var(--haz-dur) linear infinite;
+}
+@keyframes hazslide { from { background-position: 0 0; } to { background-position: var(--per) 0; } }
+
+.scan {
+  position: absolute; inset: 0; pointer-events: none; z-index: 6;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
+  opacity: 0.5;
+  animation: scandrift 7s linear infinite;
+}
+@keyframes scandrift { to { background-position: 0 24px; } }
+
+.br { position: absolute; width: 10px; height: 10px; border: 1px solid rgba(var(--acc-rgb), 0.8); z-index: 5; }
+.br--tl { top: 33px; left: 7px; border-right: 0; border-bottom: 0; }
+.br--tr { top: 33px; right: 7px; border-left: 0; border-bottom: 0; }
+.br--bl { bottom: 33px; left: 7px; border-right: 0; border-top: 0; }
+.br--br { bottom: 33px; right: 7px; border-left: 0; border-top: 0; }
+
+/* ============================================================
+   A · 海报式：上下横幅 + 居中的巨号读数
+   ============================================================ */
+.vA { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.vA::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 4;
+  background: radial-gradient(120% 90% at 50% 52%, transparent 35%, rgba(0, 0, 0, 0.55) 100%);
+}
+.haz--top { position: relative; height: 26px; flex: none; width: 100%; }
+.haz--bottom { position: relative; height: 26px; flex: none; width: 100%; animation-direction: reverse; }
+.haz--top::after, .haz--bottom::after {
+  content: ""; position: absolute; left: 0; right: 0; height: 1px;
+  background: rgba(var(--acc-rgb), 0.55);
+}
+.haz--top::after { bottom: 0; }
+.haz--bottom::after { top: 0; }
+
+.vA__body {
+  position: relative; flex: 1; display: flex; flex-direction: column; align-items: center;
+  padding: 8px 16px 0; z-index: 3;
+}
+.vA__meta {
+  align-self: stretch; display: flex; align-items: center; gap: 7px; height: 10px;
+  padding: 0 5px;
+  font-size: 8px; line-height: 1; letter-spacing: 0.18em; color: var(--mute);
+}
+.vA__en { font-family: "Maple Mono NF CN", monospace; font-size: 8px; letter-spacing: 0.2em; color: rgba(232, 237, 247, 0.72); }
+.vA__rule { flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.04)); }
+.vA__warn { color: var(--acc); letter-spacing: 0.16em; }
+
+.vA__label {
+  margin-top: 11px;
+  font-size: 10px; line-height: 1; letter-spacing: 0.4em; text-indent: 0.4em;
+  color: rgba(255, 255, 255, 0.92);
+}
+.vA__clock {
+  margin-top: 6px; display: flex; align-items: baseline;
+  font-family: "Maple Mono NF CN", monospace; font-size: 58px; line-height: 0.9;
+  letter-spacing: 0.005em; color: #fff;
+  text-shadow: 0 0 22px rgba(var(--acc-rgb), 0.34), 0 0 3px rgba(255, 255, 255, 0.3);
+}
+.vA__cs { font-size: 31px; color: var(--acc); margin-left: 3px; text-shadow: 0 0 14px rgba(var(--acc-rgb), 0.75); }
+
+.vA__foot {
+  margin-top: 11px; align-self: stretch; display: flex; justify-content: center; gap: 6px;
+  font-family: "Maple Mono NF CN", monospace; font-size: 8px; letter-spacing: 0.1em; color: var(--dim);
+}
+.vA__prog {
+  margin-top: 11px; align-self: stretch; height: 4px; position: relative;
+  background: rgba(255, 255, 255, 0.10); z-index: 3;
+}
+.vA__prog::after {
+  content: ""; position: absolute; inset: 0; z-index: 2;
+  background: repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.6) 0 1px, transparent 1px 12px);
+}
+.vA__prog i, .vB__prog i, .vC__prog i, .strip__bar i {
+  display: block; height: 100%; width: 0%;
+  background: var(--acc);
+  box-shadow: 0 0 10px rgba(var(--acc-rgb), 0.85);
+}
+
+/* ============================================================
+   B · 控制台：竖排斜纹轨 + 数字格 + 三列读数
+   ============================================================ */
+.vB { position: absolute; inset: 0; display: flex; }
+.vB__rail { position: relative; width: 32px; flex: none; overflow: hidden; border-right: 1px solid rgba(var(--acc-rgb), 0.55); }
+.haz--rail {
+  position: absolute; inset: 0; --sw: 6px;
+  animation-duration: 2.1s;
+}
+.vB__railTag {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-90deg);
+  font-family: "Sarasa Mono SC", monospace; font-size: 8px; line-height: 1; letter-spacing: 0.5em; text-indent: 0.5em;
+  color: var(--bg0); background: var(--acc); padding: 3px 6px 2px; white-space: nowrap;
+  box-shadow: 0 0 16px rgba(var(--acc-rgb), 0.6);
+}
+.vB__main {
+  position: relative; flex: 1; padding: 10px 12px 0;
+  background: linear-gradient(180deg, #080a10 0%, #05060a 60%);
+}
+.vB__main::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 12px);
+  mask-image: linear-gradient(180deg, #000, transparent 26%);
+  opacity: 0.6;
+}
+.vB__hdr { position: relative; display: flex; align-items: center; gap: 6px; height: 13px; }
+.vB__tag {
+  font-size: 7.5px; line-height: 1; letter-spacing: 0.2em; text-indent: 0.2em;
+  color: var(--bg0); background: var(--acc); padding: 2px 4px 1px;
+}
+.vB__title { font-size: 10.5px; line-height: 1; letter-spacing: 0.22em; color: var(--ink); }
+.vB__t { margin-left: auto; font-family: "Maple Mono NF CN", monospace; font-size: 9px; letter-spacing: 0.06em; color: var(--acc); }
+
+.vB__cells { position: relative; z-index: 2; margin-top: 10px; display: flex; align-items: center; justify-content: center; }
+.cell { display: flex; align-items: center; justify-content: center; font-family: "Maple Mono NF CN", monospace; font-weight: 400; }
+.cell.d {
+  width: 32px; height: 50px; margin: 0 1px;
+  font-size: 29px; color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-left-color: rgba(var(--acc-rgb), 0.55);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.008) 55%, rgba(0, 0, 0, 0.25) 100%);
+  text-shadow: 0 0 14px rgba(255, 255, 255, 0.18);
+}
+.cell.s { width: 13px; font-size: 21px; color: var(--acc); opacity: 0.92; }
+
+.vB__ruler {
+  position: relative; z-index: 2; height: 4px; margin: 9px 2px 0;
+  background: repeating-linear-gradient(90deg, rgba(var(--acc-rgb), 0.45) 0 1px, transparent 1px 6px);
+  opacity: 0.55;
+}
+.vB__ruler::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 1px;
+  background: linear-gradient(90deg, rgba(var(--acc-rgb), 0.5), transparent);
+}
+.vB__status {
+  position: relative; z-index: 2; margin-top: 7px; display: flex; justify-content: space-between;
+  font-family: "Maple Mono NF CN", monospace; font-size: 7.5px; letter-spacing: 0.14em;
+  color: rgba(232, 237, 247, 0.4);
+}
+.vB__status .js-status { color: rgba(var(--acc-rgb), 0.92); }
+.vB__sector { color: rgba(232, 237, 247, 0.26); }
+.vB__ghost {
+  position: absolute; right: 12px; bottom: 42px; z-index: 1; pointer-events: none;
+  font-family: "Maple Mono NF CN", monospace; font-size: 22px; line-height: 1;
+  letter-spacing: 0.02em; color: rgba(var(--acc-rgb), 0.075);
+  white-space: nowrap;
+}
+.vB__tele { position: absolute; z-index: 2; left: 12px; right: 12px; bottom: 13px; display: flex; gap: 12px; }
+.vB__tele div { flex: 1; padding-left: 5px; border-left: 1px solid rgba(var(--acc-rgb), 0.4); }
+.vB__tele em { display: block; font-style: normal; font-size: 7px; line-height: 1; letter-spacing: 0.22em; color: var(--dim); }
+.vB__tele b { display: block; margin-top: 4px; font-family: "Maple Mono NF CN", monospace; font-weight: 400; font-size: 11px; line-height: 1; color: var(--ink); }
+.vB__prog { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(255, 255, 255, 0.08); }
+
+/* ============================================================
+   C · 贴纸字：满幅斜纹 + 黑描边白字，像贴上去的片假名标题
+   ============================================================ */
+.vC { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.haz--flood {
+  position: absolute; inset: 0; --sw: 13px; --haz-dur: 5.2s;
+  background-image: repeating-linear-gradient(315deg, rgba(var(--acc-rgb), 0.94) 0 var(--sw), #05060a var(--sw) calc(var(--sw) * 2));
+}
+.vC__body {
+  position: relative; flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; padding-bottom: 8px;
+}
+.vC__kicker { margin-bottom: 9px; }
+.vC__en {
+  font-family: "Maple Mono NF CN", monospace; font-size: 7.5px; letter-spacing: 0.34em;
+  color: #fff;
+  text-shadow: -1.2px 0 0 #05060a, 1.2px 0 0 #05060a, 0 -1.2px 0 #05060a, 0 1.2px 0 #05060a;
+}
+.vC__label {
+  font-family: "Sarasa Mono SC", monospace; font-size: 10px; line-height: 1;
+  letter-spacing: 0.44em; text-indent: 0.44em;
+  color: #fff; background: #05060a; padding: 4px 8px 3px;
+}
+.vC__clock { margin-top: 7px; display: flex; align-items: baseline; }
+.vC__num {
+  font-family: "Maple Mono NF CN", monospace; font-size: 60px; line-height: 0.9;
+  letter-spacing: 0.004em; color: #fff;
+  text-shadow:
+    -2px 0 0 #05060a, 2px 0 0 #05060a, 0 -2px 0 #05060a, 0 2px 0 #05060a,
+    -2px -2px 0 #05060a, 2px -2px 0 #05060a, -2px 2px 0 #05060a, 2px 2px 0 #05060a,
+    0 0 26px rgba(var(--acc-rgb), 0.55);
+}
+.vC__cs {
+  font-family: "Maple Mono NF CN", monospace; font-size: 30px; line-height: 0.9;
+  color: #fff; margin-left: 4px;
+  text-shadow:
+    -1.5px 0 0 #05060a, 1.5px 0 0 #05060a, 0 -1.5px 0 #05060a, 0 1.5px 0 #05060a,
+    -1.5px -1.5px 0 #05060a, 1.5px -1.5px 0 #05060a, -1.5px 1.5px 0 #05060a, 1.5px 1.5px 0 #05060a;
+}
+.vC__foot {
+  margin-top: 11px; display: flex; align-items: center; gap: 8px;
+  font-family: "Maple Mono NF CN", monospace; font-size: 8px; letter-spacing: 0.12em;
+  color: #fff; background: #05060a; padding: 3px 8px 2px;
+}
+.vC__dot { width: 3px; height: 3px; background: rgba(var(--acc-rgb), 0.9); display: block; }
+.vC__prog { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: #05060a; z-index: 5; }
+.vC__prog i { box-shadow: none; }
+
+/* ============================================================
+   强度分级：最后 1 分钟 / 最后 10 秒 / 到点
+   ============================================================ */
+.card.is-hot { --haz-dur: 1.25s; }
+.card.is-hot .vA__clock, .card.is-hot .vC__clock { text-shadow: 0 0 26px rgba(var(--acc-rgb), 0.7), 0 0 4px rgba(255, 255, 255, 0.5); }
+.card.is-hot .vA__label, .card.is-hot .vC__label { color: #fff; }
+
+.card.is-crit { --haz-dur: 0.62s; }
+.card.is-crit .vA__clock, .card.is-crit .vC__clock { animation: heartbeat 1s steps(2, end) infinite; }
+.card.is-crit .vB__t { animation: heartbeat 1s steps(2, end) infinite; }
+.card.is-crit { box-shadow: 0 0 0 1px rgba(var(--acc-rgb), 0.55), 0 0 80px -18px rgba(var(--acc-rgb), 0.8), 0 26px 60px -12px #000; }
+@keyframes heartbeat { 0%, 100% { opacity: 1; } 50% { opacity: 0.62; } }
+
+/* ---- 到点：整张卡片切成达标色，条纹停 ---- */
+.card.is-done { --acc: var(--success); --acc-rgb: 70, 211, 154; }
+.card.is-done .haz, .card.is-done .vC__num { animation-play-state: paused; }
+.card.is-done .done { display: flex; }
+.done {
+  position: absolute; inset: 0; z-index: 8; display: none;
+  flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(85% 85% at 50% 46%, rgba(70, 211, 154, 0.18), rgba(5, 6, 10, 0) 62%), rgba(5, 6, 10, 0.972);
+  backdrop-filter: blur(2px);
+  animation: doneIn 0.24s ease-out both;
+}
+@keyframes doneIn { from { opacity: 0; } to { opacity: 1; } }
+.done__txt {
+  font-size: 24px; letter-spacing: 0.34em; text-indent: 0.34em; color: var(--success);
+  text-shadow: 0 0 24px rgba(70, 211, 154, 0.55);
+  animation: flick 0.5s steps(1, end) 1 both;
+}
+.done__sub { margin-top: 9px; font-size: 9px; letter-spacing: 0.3em; text-indent: 0.3em; color: rgba(232, 237, 247, 0.6); }
+.done__burst {
+  position: absolute; width: 40px; height: 40px; border-radius: 50%;
+  border: 1px solid rgba(70, 211, 154, 0.9);
+  animation: burst 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes burst { from { transform: scale(0.4); opacity: 0.9; } to { transform: scale(9); opacity: 0; } }
+@keyframes flick { 0% { opacity: 0; } 20% { opacity: 1; } 28% { opacity: 0.1; } 40% { opacity: 1; } 46% { opacity: 0.35; } 100% { opacity: 1; } }
+
+/* ============================================================
+   展开前横条 + 入场动画
+   ============================================================ */
+.strip { position: absolute; inset: 0; display: none; padding: 9px 14px 0; background: linear-gradient(180deg, #12161f, #0d1118); }
+.strip__top { display: flex; align-items: center; gap: 5px; font-size: 8.5px; line-height: 1; color: var(--mute); }
+.strip__led { width: 5px; height: 5px; border-radius: 50%; background: var(--acc); box-shadow: 0 0 8px rgba(var(--acc-rgb), 0.9); }
+.strip__right { margin-left: auto; font-size: 8px; color: var(--dim); }
+.strip__num { margin-top: 7px; font-family: "Maple Mono NF CN", monospace; font-size: 18px; line-height: 1; color: var(--ink); letter-spacing: 0.02em; }
+.strip__bar { position: absolute; left: 14px; right: 14px; bottom: 8px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+
+.card.is-entering .haz--top { animation: wipeIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.card.is-entering .haz--bottom { animation: wipeInR 0.42s cubic-bezier(0.16, 1, 0.3, 1) 0.04s both; }
+.card.is-entering .haz--rail { animation: wipeDown 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.06s both; }
+.card.is-entering .haz--toprail { animation: wipeIn 0.46s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.card.is-entering .haz--botrail { animation: wipeInR 0.46s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both; }
+.card.is-entering .vA__body > *, .card.is-entering .vC__body > *, .card.is-entering .vB__main > * {
+  animation: flick 0.72s steps(1, end) 0.16s both;
+}
+@keyframes wipeIn { from { transform: translateX(-101%); } to { transform: translateX(0); } }
+@keyframes wipeInR { from { transform: translateX(101%); } to { transform: translateX(0); } }
+@keyframes wipeDown { from { transform: translateY(-101%); } to { transform: translateY(0); } }
+@keyframes floodIn { from { opacity: 0; transform: scale(1.02); } to { opacity: 1; transform: none; } }
+
+/* ---------- 原型工具条 ---------- */
+.bar {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 40;
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  background: rgba(16, 19, 26, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  box-shadow: 0 18px 50px -12px #000, inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  font-size: 10px; color: rgba(232, 237, 247, 0.7);
+  user-select: none;
+}
+.bar__grp { display: flex; align-items: center; gap: 2px; flex: none; }
+.bar button { white-space: nowrap; }
+.bar__grp--nav { gap: 4px; }
+.bar__nav {
+  width: 22px; height: 22px; border-radius: 50%; border: 0; cursor: pointer;
+  background: rgba(255, 255, 255, 0.06); color: rgba(232, 237, 247, 0.85);
+  font-size: 13px; line-height: 1; font-family: inherit;
+}
+.bar__nav:hover { background: rgba(255, 255, 255, 0.14); }
+.bar__id { display: flex; align-items: baseline; gap: 5px; min-width: 76px; justify-content: center; }
+.bar__id b { font-family: "Maple Mono NF CN", monospace; font-size: 11px; color: #fff; letter-spacing: 0.08em; }
+.bar__id span { font-size: 10px; color: rgba(232, 237, 247, 0.55); }
+.bar__sep { width: 1px; height: 16px; background: rgba(255, 255, 255, 0.1); margin: 0 3px; }
+.bar button[data-scene], .bar button[data-scale], .bar #skip, .bar #replay {
+  border: 0; cursor: pointer; font-family: inherit; font-size: 10px; line-height: 1;
+  padding: 6px 9px; border-radius: 999px; color: rgba(232, 237, 247, 0.62); background: transparent;
+}
+.bar button[data-scene]:hover, .bar button[data-scale]:hover, .bar #skip:hover, .bar #replay:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
+.bar button.on { background: rgba(255, 255, 255, 0.12); color: #fff; }
+.bar #accents button {
+  width: 15px; height: 15px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.22);
+  cursor: pointer; padding: 0; margin: 0 1px; background-clip: padding-box;
+}
+.bar #accents button.on { box-shadow: 0 0 0 2px #10131a, 0 0 0 3px rgba(255, 255, 255, 0.75); }
+
+/* ---------- 截图/静态评审用：?anim=0 ---------- */
+.no-anim *, .no-anim *::before, .no-anim *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ---------- 低动态 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .haz, .scan, .vC__num, .done__burst, .card.is-crit .vA__clock, .card.is-crit .vC__clock, .card.is-crit .vB__t { animation: none !important; }
+  .card.is-entering .haz--top, .card.is-entering .haz--bottom, .card.is-entering .haz--rail, .card.is-entering .haz--toprail, .card.is-entering .haz--botrail, .card.is-entering .vA__body > *, .card.is-entering .vC__body > *, .card.is-entering .vB__main > * { animation: none !important; }
+}

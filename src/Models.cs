@@ -157,6 +157,8 @@ namespace WorkCountdown
         public string reminderEffect { get; set; } // none | glow | particles | aurora
         public bool reducedMotion { get; set; }
         public int reminderHoldSeconds { get; set; } // 3..20
+        public bool? finalAlert { get; set; }     // 终盘告警：null = 老配置默认开启
+        public string alertAccent { get; set; }   // theme | red | amber（终盘斜纹用色）
 
         public UiSettings()
         {
@@ -171,6 +173,8 @@ namespace WorkCountdown
             reminderEffect = "glow";
             reducedMotion = false;
             reminderHoldSeconds = 6;
+            finalAlert = true;
+            alertAccent = "theme";
         }
     }
 
@@ -431,6 +435,9 @@ namespace WorkCountdown
                 && s.ui.reminderEffect != "particles" && s.ui.reminderEffect != "aurora")
                 s.ui.reminderEffect = "glow";
             s.ui.reminderHoldSeconds = Math.Max(3, Math.Min(20, s.ui.reminderHoldSeconds));
+            if (s.ui.finalAlert == null) s.ui.finalAlert = true;   // 老配置里没有这个字段：默认开
+            if (s.ui.alertAccent != "theme" && s.ui.alertAccent != "red" && s.ui.alertAccent != "amber")
+                s.ui.alertAccent = "theme";
             s.ui.x = s.ui.x < -30000 ? -1 : s.ui.x;
         }
 
@@ -839,10 +846,45 @@ namespace WorkCountdown
         public string lunchLabel { get; set; }
         public string lunchValue { get; set; }
         public bool lunchCounting { get; set; }   // true = 正在倒数（开始前 / 午休中）
+
+        // 终盘：距离下班或午休起点不足十分钟时，卡片切到告警态
+        public bool alert { get; set; }
+        public bool alertLunch { get; set; }        // 终盘指向的是午休还是下班
+        public string alertLabel { get; set; }      // 距离下班 / 距离午休
+        public string alertEn { get; set; }         // SHIFT END / LUNCH BREAK
+        public string alertTargetText { get; set; } // 目标时刻 18:00
+        public DateTime alertTarget { get; set; }   // 目标那一刻
     }
 
     public static class StatusBuilder
     {
+        /// <summary>终盘的长度：目标时刻前这十分钟（ADR 0006）。</summary>
+        public const int FinalAlertMinutes = 10;
+
+        /// <summary>终盘：下班或午休起点前十分钟内，卡片切到告警态。两个目标都在窗口里时，更早的那个说了算。</summary>
+        private static void FillAlert(Settings s, CardStatus st, DateTime now, DateTime target)
+        {
+            if (s.ui.finalAlert == false) return;
+
+            DateTime? lunch = null;
+            int lunchMinute;
+            if (s.ui.showLunch && st.lunch == LunchState.Before
+                && SettingsExtensions.TryParseTime(s.lunchStart, out lunchMinute))
+                lunch = now.Date.AddMinutes(lunchMinute);
+
+            bool isLunch = lunch.HasValue && lunch.Value < target;
+            DateTime pick = isLunch ? lunch.Value : target;
+            TimeSpan left = pick - now;
+            if (left <= TimeSpan.Zero || left > TimeSpan.FromMinutes(FinalAlertMinutes)) return;
+
+            st.alert = true;
+            st.alertLunch = isLunch;
+            st.alertTarget = pick;
+            st.alertTargetText = pick.ToString("HH:mm", CultureInfo.InvariantCulture);
+            st.alertLabel = isLunch ? "距离午休" : "距离下班";
+            st.alertEn = isLunch ? "LUNCH BREAK" : "SHIFT END";
+        }
+
         /// <summary>午休窗口：11:50 前倒数「距午休」，午休期间倒数「还剩」，结束后显示区间。</summary>
         private static void FillLunch(Settings s, CardStatus st, DateTime now)
         {
@@ -981,6 +1023,7 @@ namespace WorkCountdown
                 st.big = Policy.Clock(target - now);
                 int requiredT = plan.mode == "fixed" ? (int)Math.Round((target - start).TotalMinutes) : plan.requiredMinutes;
                 st.extra = "已工作 " + Policy.CompactDuration(now - inTime.Value) + " · 应勤 " + Policy.CompactDuration(TimeSpan.FromMinutes(requiredT));
+                FillAlert(s, st, now, target);
                 return st;
             }
 

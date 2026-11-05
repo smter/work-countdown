@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>原型 · 作戦開始 — EVA 警報倒计时</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div class="scene">
+  <div class="scene__wall"></div>
+  <div class="scene__grain"></div>
+
+  <header class="scene__head">
+    <b>PROTOTYPE</b>
+    <span>作戦開始 · 下班前十分钟的 EVA 警告态</span>
+    <em>280×186 DIP · 可回收</em>
+  </header>
+
+  <main class="board">
+    <div class="board__slot" id="slot">
+      <div class="card" id="card" data-variant="A">
+
+        <!-- 展开前的横条：只用来演示「让界面展开」这一动作 -->
+        <div class="strip" aria-hidden="true">
+          <div class="strip__top">
+            <i class="strip__led"></i><span class="strip__label">距离下班</span><span class="strip__right">下班 18:00</span>
+          </div>
+          <div class="strip__num"><span class="js-strip">00:09:59</span></div>
+          <div class="strip__bar"><i class="js-prog"></i></div>
+        </div>
+
+        <!-- ─────────── A · 海报式 ─────────── -->
+        <section class="v vA" data-for="A">
+          <div class="haz haz--top"></div>
+          <div class="vA__body">
+            <div class="vA__meta">
+              <span class="vA__en">SHIFT&nbsp;END</span>
+              <span class="vA__rule"></span>
+              <span class="vA__warn js-warn">警告 · 终了接近</span>
+            </div>
+            <div class="vA__label js-label">距离下班</div>
+            <div class="vA__clock">
+              <span class="js-mmss">09:59</span><span class="vA__cs js-cs">.99</span>
+            </div>
+            <div class="vA__foot">
+              <span class="js-target">目标 18:00</span>
+            </div>
+          </div>
+          <div class="vA__prog"><i class="js-prog"></i></div>
+          <div class="haz haz--bottom"></div>
+
+          <span class="br br--tl"></span><span class="br br--tr"></span>
+          <span class="br br--bl"></span><span class="br br--br"></span>
+          <div class="scan"></div>
+        </section>
+
+        <!-- ─────────── B · 控制台 ─────────── -->
+        <section class="v vB" data-for="B">
+          <div class="vB__rail">
+            <div class="haz haz--rail"></div>
+            <span class="vB__railTag">ALERT</span>
+          </div>
+          <div class="vB__main">
+            <header class="vB__hdr">
+              <span class="vB__tag">ALERT</span>
+              <span class="vB__title js-label">距离下班</span>
+              <span class="vB__t js-tminus">T-10:00</span>
+            </header>
+            <div class="vB__cells">
+              <b class="cell d">0</b><b class="cell d">9</b>
+              <b class="cell s">:</b>
+              <b class="cell d">5</b><b class="cell d">9</b>
+              <b class="cell s">.</b>
+              <b class="cell d">9</b><b class="cell d">9</b>
+            </div>
+            <div class="vB__ruler"></div>
+            <div class="vB__status"><span class="js-status">T-MINUS 09:59.99</span><span class="vB__sector">SECTOR 03</span></div>
+            <div class="vB__ghost">WARNING</div>
+            <div class="vB__tele">
+              <div><em>目标</em><b class="js-targettime">18:00</b></div>
+              <div><em>进度</em><b class="js-pct">78%</b></div>
+              <div><em>剩余</em><b class="js-remain">10:00</b></div>
+            </div>
+            <div class="vB__prog"><i class="js-prog"></i></div>
+          </div>
+          <div class="scan"></div>
+        </section>
+
+        <!-- ─────────── C · 贴纸字 ─────────── -->
+        <section class="v vC" data-for="C">
+          <div class="haz haz--flood"></div>
+          <div class="vC__body">
+            <div class="vC__kicker"><span class="vC__en">STRATEGY START</span></div>
+            <div class="vC__label js-label">距离下班</div>
+            <div class="vC__clock">
+              <span class="vC__num js-mmss">09:59</span><span class="vC__cs js-cs">.99</span>
+            </div>
+            <div class="vC__foot"><span class="js-target">目标 18:00</span><span class="vC__dot"></span><span class="js-tminus">T-10:00</span></div>
+          </div>
+          <div class="vC__prog"><i class="js-prog"></i></div>
+          <div class="scan"></div>
+        </section>
+
+        <!-- 到点后的一瞬间（三个变体共用） -->
+        <div class="done" aria-hidden="true">
+          <div class="done__burst"></div>
+          <div class="done__txt">已达标</div>
+          <div class="done__sub">可以下班了</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="board__cap" id="cap"></p>
+  </main>
+</div>
+
+<div class="bar" id="bar">
+  <div class="bar__grp bar__grp--nav">
+    <button class="bar__nav" id="prev" title="上一个 (←)">‹</button>
+    <div class="bar__id"><b id="vkey">A</b><span id="vname">海报</span></div>
+    <button class="bar__nav" id="next" title="下一个 (→)">›</button>
+  </div>
+  <div class="bar__sep"></div>
+  <div class="bar__grp" id="scenes">
+    <button data-scene="eod" class="on">下班</button>
+    <button data-scene="lunch">午休</button>
+  </div>
+  <div class="bar__sep"></div>
+  <div class="bar__grp" id="accents" title="强调色（跟随主题）"></div>
+  <div class="bar__sep"></div>
+  <div class="bar__grp" id="scales">
+    <button data-scale="1">1×</button>
+    <button data-scale="1.5">1.5×</button>
+    <button data-scale="2" class="on">2×</button>
+  </div>
+  <div class="bar__sep"></div>
+  <div class="bar__grp">
+    <button id="skip">跳到 30s</button>
+    <button id="replay">重播展开</button>
+  </div>
+</div>
+
+<script src="prototype.js"></script>
+</body>
+</html>

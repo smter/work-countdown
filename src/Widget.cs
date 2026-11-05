@@ -67,6 +67,24 @@ namespace WorkCountdown
         private Font fontRemindTime;
         private Font fontCollapsedText;
 
+        // 终盘告警态（ADR 0006）
+        private readonly Font fontAlertBig;
+        private readonly Font fontAlertCs;
+        private readonly Font fontAlertMeta;
+        private readonly Font fontAlertLabel;
+        private readonly Font fontAlertStrip;
+        private readonly Font fontAlertStripCs;
+        private readonly Font fontAlertDone;
+        private System.Windows.Forms.Timer alertT;
+        private bool alertOn;
+        private int alertEnteredAt;
+        private bool alertDismissed;          // 用户在本次终盘里手动收起过
+        private bool alertPreview;            // 右键菜单里手动放的预览
+        private DateTime alertDoneAt = DateTime.MinValue;
+        private DateTime alertTarget;
+        private bool alertLunch;
+        private string alertLabel, alertEn, alertTargetText;
+
         private bool animating;
         private int animFromW, animFromH, animFromX, animToW, animToH, animToX;
         private int animStart;
@@ -131,6 +149,13 @@ namespace WorkCountdown
             fontRemindTitle = CreateRoleFont(FontRole.Body, 17f, FontStyle.Regular);
             fontRemindMeta = CreateRoleFont(FontRole.Body, 10f, FontStyle.Regular);
             fontRemindTime = CreateRoleFont(FontRole.Timer, 12f, FontStyle.Regular);
+            fontAlertBig = CreateRoleFont(FontRole.Timer, 42f, FontStyle.Regular);
+            fontAlertCs = CreateRoleFont(FontRole.Timer, 22f, FontStyle.Regular);
+            fontAlertMeta = CreateRoleFont(FontRole.Body, 6.5f, FontStyle.Regular);
+            fontAlertLabel = CreateRoleFont(FontRole.Body, 8f, FontStyle.Regular);
+            fontAlertStrip = CreateRoleFont(FontRole.Timer, 17f, FontStyle.Regular);
+            fontAlertStripCs = CreateRoleFont(FontRole.Timer, 10f, FontStyle.Regular);
+            fontAlertDone = CreateRoleFont(FontRole.Timer, 26f, FontStyle.Regular);
 
             menu = BuildMenu();
             ContextMenuStrip = menu;
@@ -163,6 +188,11 @@ namespace WorkCountdown
             calPoll = new System.Windows.Forms.Timer();
             calPoll.Interval = Math.Max(3, settings.calendarPollMinutes) * 60 * 1000;
             calPoll.Tick += delegate { RequestCalendar(false); };
+
+            // 终盘只在这十分钟里跑；读数带百分秒，刷新要快到能看见它在走
+            alertT = new System.Windows.Forms.Timer();
+            alertT.Interval = 33;
+            alertT.Tick += delegate { AlertTick(); };
 
             remindT = new System.Windows.Forms.Timer();
             remindT.Interval = 16;
@@ -305,6 +335,7 @@ namespace WorkCountdown
         {
             if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
             tick.Stop(); poll.Stop(); autoCollapse.Stop(); animT.Stop(); calPoll.Stop(); remindT.Stop();
+            if (alertT != null) alertT.Stop();
             base.OnFormClosing(e);
         }
 
@@ -314,11 +345,13 @@ namespace WorkCountdown
             {
                 reminderTip.Dispose();
                 if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
-                foreach (var timer in new System.Windows.Forms.Timer[] { tick, poll, autoCollapse, animT, calPoll, remindT })
+                foreach (var timer in new System.Windows.Forms.Timer[] { tick, poll, autoCollapse, animT, calPoll, remindT, alertT })
                     if (timer != null) timer.Dispose();
                 foreach (var font in new Font[] { fontBig, fontBigText, fontStatus, fontTiny, fontSmall,
                     fontCollapsedNum, fontCollapsedLabel, fontCollapsedText, fontRemindBig, fontRemindSmall,
-                    fontRemindTitle, fontRemindMeta, fontRemindTime }) if (font != null) font.Dispose();
+                    fontRemindTitle, fontRemindMeta, fontRemindTime,
+                    fontAlertBig, fontAlertCs, fontAlertMeta, fontAlertLabel, fontAlertStrip,
+                    fontAlertStripCs, fontAlertDone }) if (font != null) font.Dispose();
                 sfCenter.Dispose(); sfNear.Dispose(); sfFar.Dispose();
                 if (menu != null) menu.Dispose();
             }
@@ -333,6 +366,7 @@ namespace WorkCountdown
             // 窗口底色必须和卡片一致：圆角抗锯齿边缘会与底色混合，浅灰底会出现一圈白边
             if (BackColor != theme.bgBottom) BackColor = theme.bgBottom;
             status = StatusBuilder.Build(settings, snapshot, DateTime.Now, theme);
+            UpdateAlert();
             Invalidate();
         }
 
@@ -675,6 +709,7 @@ namespace WorkCountdown
             poll.Stop();
             if (settings.lark.enabled) poll.Start();
 
+            if (alertT != null) alertT.Interval = AlertQuiet ? 100 : 33;
             calPoll.Interval = Math.Max(3, settings.calendarPollMinutes) * 60 * 1000;
             calPoll.Stop();
             if (settings.calendarEnabled && settings.lark.enabled) calPoll.Start();
@@ -807,6 +842,7 @@ namespace WorkCountdown
         private void SetCollapsed(bool value)
         {
             if (reminding) return;
+            if (value && alertOn) alertDismissed = true;
             if (collapsed == value && !animating) return;
             StartAnim(value);
         }
@@ -823,7 +859,7 @@ namespace WorkCountdown
 
         private void MaybeAutoCollapse()
         {
-            if (collapsed || animating || reminding) return;
+            if (collapsed || animating || reminding || alertOn) return;
             if (ClientRectangle.Contains(PointToClient(Cursor.Position))) { ResetAutoCollapse(); return; }
             SetCollapsed(true);
         }
@@ -847,7 +883,8 @@ namespace WorkCountdown
                 PaintAtmosphere(g,theme.accent,0,false);
                 if (!reminding)
                 {
-                    if (collapsed) PaintCollapsed(g); else PaintExpanded(g);
+                    if (alertOn || DateTime.Now < alertDoneAt) PaintAlert(g);
+                    else if (collapsed) PaintCollapsed(g); else PaintExpanded(g);
                 }
                 else
                 {
@@ -933,6 +970,322 @@ namespace WorkCountdown
                 new RectangleF(pad-S(1),S(27),w,S(27)),1,false);
             DrawProgress(g,pad,S(59),Width-pad*2,S(3));
             if(lastFetchFailed) Line(g,"!",fontStatus,Color.FromArgb(242,179,76),new RectangleF(Width-pad-S(14),S(32),S(14),S(20)),1,true);
+        }
+
+        // ================= 终盘告警态（ADR 0006） =================
+        // 目标时刻前十分钟，卡片换一副面孔：黑底 + 滚动斜纹 + 巨号读数。
+        // 只换样子，不换大小；读数带百分秒，靠 33ms 的计时器让它看起来在走。
+
+        private Color AlertAccent()
+        {
+            string pick = settings.ui.alertAccent;
+            if (pick == "red") return Color.FromArgb(229, 72, 77);
+            if (pick == "amber") return Color.FromArgb(248, 183, 19);
+            return theme != null ? theme.accent : Color.FromArgb(76, 141, 255);
+        }
+
+        private bool AlertQuiet
+        {
+            get { return settings.ui.reducedMotion || SystemInformation.HighContrast; }
+        }
+
+        /// <summary>进入/离开终盘：只在跨过边界时动一次，之后每次 Recompute 只同步目标时刻。</summary>
+        private void UpdateAlert()
+        {
+            if (alertPreview) { Invalidate(); return; }
+            bool wanted = status != null && status.alert && settings.ui.finalAlert != false;
+            if (wanted)
+            {
+                bool entering = !alertOn;
+                alertOn = true;
+                alertLabel = status.alertLabel;
+                alertEn = status.alertEn;
+                alertTargetText = status.alertTargetText;
+                alertTarget = status.alertTarget;
+                alertLunch = status.alertLunch;
+                if (entering)
+                {
+                    alertDismissed = false;
+                    alertEnteredAt = Environment.TickCount;
+                    alertDoneAt = DateTime.MinValue;
+                }
+                if (!alertT.Enabled) alertT.Start();
+                // 进终盘自动展开一次；用户自己收起过就不再弹（ADR 0006）
+                autoCollapse.Stop();
+                if (!alertDismissed && collapsed && !animating && !reminding && IsHandleCreated)
+                    SetCollapsed(false);
+            }
+            else if (alertOn)
+            {
+                alertOn = false;
+                // 到点那一刻亮一下达标色，1.5 秒后回普通卡片；不是因为到点而离开（比如手动改了设置）就不闪
+                if (alertDoneAt == DateTime.MinValue && DateTime.Now >= alertTarget && !alertLunch)
+                    alertDoneAt = DateTime.Now.AddSeconds(1.5);
+                if (!alertT.Enabled) alertT.Start();
+            }
+            Invalidate();
+        }
+
+        private void AlertTick()
+        {
+            if (alertPreview && Environment.TickCount - alertEnteredAt > 90000) { StopAlertPreview(); return; }
+            if (!alertOn && DateTime.Now >= alertDoneAt)
+            {
+                alertT.Stop();
+                alertDoneAt = DateTime.MinValue;
+            }
+            Invalidate();
+        }
+
+        /// <summary>右键菜单里的预览：不用等到真到点，也能看清这副面孔。90 秒后自己收。</summary>
+        private void StartAlertPreview()
+        {
+            alertPreview = true;
+            alertOn = true;
+            alertDismissed = false;
+            alertDoneAt = DateTime.MinValue;
+            alertEnteredAt = Environment.TickCount;
+            alertLunch = false;
+            alertLabel = "距离下班";
+            alertEn = "SHIFT END";
+            alertTarget = DateTime.Now.AddMinutes(StatusBuilder.FinalAlertMinutes);
+            alertTargetText = alertTarget.ToString("HH:mm", CultureInfo.InvariantCulture);
+            alertT.Start();
+            autoCollapse.Stop();
+            if (collapsed && !animating && !reminding) SetCollapsed(false);
+            Invalidate();
+        }
+
+        private void StopAlertPreview()
+        {
+            alertPreview = false;
+            alertOn = false;
+            alertDoneAt = DateTime.MinValue;
+            alertT.Stop();
+            Recompute();
+        }
+
+        /// <summary>终盘读数：从目标时刻倒数的百分秒。</summary>
+        private string AlertClock(out string hundredths)
+        {
+            TimeSpan left = alertTarget - DateTime.Now;
+            if (left < TimeSpan.Zero) left = TimeSpan.Zero;
+            long total = (long)(left.TotalMilliseconds / 10);
+            hundredths = "." + (total % 100).ToString("00", CultureInfo.InvariantCulture);
+            return (total / 6000 % 100).ToString("00", CultureInfo.InvariantCulture) + ":"
+                 + (total / 100 % 60).ToString("00", CultureInfo.InvariantCulture);
+        }
+
+        private void PaintAlert(Graphics g)
+        {
+            Color accent = AlertAccent();
+            bool done = DateTime.Now < alertDoneAt;
+            using (var bg = new SolidBrush(Color.FromArgb(5, 6, 10)))
+                g.FillRectangle(bg, 0, 0, Width, Height);
+            if (done) PaintAlertDone(g);
+            else if (collapsed) PaintAlertStrip(g, accent);
+            else PaintAlertCard(g, accent);
+        }
+
+        /// <summary>字体的基线高度（像素），用来把两种字号对齐到同一条基线上。</summary>
+        private static float AscentPx(Graphics g, Font f)
+        {
+            float em = f.FontFamily.GetEmHeight(f.Style);
+            if (em <= 0) return f.Height * 0.8f;
+            return f.Size * (g.DpiY / 72f) * f.FontFamily.GetCellAscent(f.Style) / em;
+        }
+
+        /// <summary>斜纹：45°、条与缝等宽，按 phase 横向滚动；缝透出黑底。</summary>
+        private void DrawHazard(Graphics g, RectangleF rect, Color color, float phase, float stripe)
+        {
+            float sw = stripe;
+            if (sw < 2f) sw = 2f;
+            float period = sw * 2.8284271f;
+            float start = rect.Left - rect.Height + (phase % period);
+            if (start > rect.Left) start -= period;
+            var saved = g.Save();
+            g.SetClip(rect, CombineMode.Intersect);
+            using (var pen = new Pen(color, sw))
+                for (float x = start; x < rect.Right + rect.Height + period; x += period)
+                    g.DrawLine(pen, x, rect.Top, x + rect.Height, rect.Bottom);
+            g.Restore(saved);
+        }
+
+        private void DrawBrackets(Graphics g, RectangleF r, Color color)
+        {
+            float len = S(9);
+            using (var pen = new Pen(color, Math.Max(1, scale)))
+            {
+                g.DrawLine(pen, r.Left, r.Top, r.Left + len, r.Top);
+                g.DrawLine(pen, r.Left, r.Top, r.Left, r.Top + len);
+                g.DrawLine(pen, r.Right, r.Top, r.Right - len, r.Top);
+                g.DrawLine(pen, r.Right, r.Top, r.Right, r.Top + len);
+                g.DrawLine(pen, r.Left, r.Bottom, r.Left + len, r.Bottom);
+                g.DrawLine(pen, r.Left, r.Bottom, r.Left, r.Bottom - len);
+                g.DrawLine(pen, r.Right, r.Bottom, r.Right - len, r.Bottom);
+                g.DrawLine(pen, r.Right, r.Bottom, r.Right, r.Bottom - len);
+            }
+        }
+
+        private float TrackedWidth(Graphics g, string text, Font font, float tracking)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            return g.MeasureString(text, font, 4096, StringFormat.GenericTypographic).Width
+                 + tracking * Math.Max(0, text.Length - 1);
+        }
+
+        /// <summary>GDI+ 没有字距，逐字画。</summary>
+        private float DrawTracked(Graphics g, string text, Font font, Color color, float x, float y, float tracking)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            using (var brush = new SolidBrush(color))
+            {
+                float cx = x;
+                foreach (char ch in text)
+                {
+                    string one = ch.ToString();
+                    g.DrawString(one, font, brush, cx, y, StringFormat.GenericTypographic);
+                    cx += g.MeasureString(one, font, 4096, StringFormat.GenericTypographic).Width + tracking;
+                }
+                return cx - x;
+            }
+        }
+
+        private void DrawScanlines(Graphics g, RectangleF rect)
+        {
+            using (var pen = new Pen(Color.FromArgb(16, 255, 255, 255), Math.Max(1, scale)))
+                for (float y = rect.Top; y < rect.Bottom; y += S(3))
+                    g.DrawLine(pen, rect.Left, y, rect.Right, y);
+        }
+
+        private void PaintAlertCard(Graphics g, Color accent)
+        {
+            bool quiet = AlertQuiet;
+            int w = Width, h = Height;
+            float bandH = S(26);
+            float phase = quiet ? 0f : (Environment.TickCount - alertEnteredAt) * 0.012f;
+
+            DrawHazard(g, new RectangleF(0, 0, w, bandH), accent, phase, S(9));
+            DrawHazard(g, new RectangleF(0, h - bandH, w, bandH), accent, -phase, S(9));
+            using (var pen = new Pen(Color.FromArgb(150, accent), Math.Max(1, scale)))
+            {
+                g.DrawLine(pen, 0, bandH, w, bandH);
+                g.DrawLine(pen, 0, h - bandH, w, h - bandH);
+            }
+
+            int pad = S(22);
+            // 顶行：英文标签 —— 细线 —— 警告
+            float metaY = S(30);
+            float w1 = DrawTracked(g, alertEn ?? "SHIFT END", fontAlertMeta, Color.FromArgb(190, 232, 237, 247), pad, metaY, S(1.7f));
+            string warn = alertLunch ? "警告 · 午休接近" : "警告 · 终了接近";
+            float w2 = TrackedWidth(g, warn, fontAlertMeta, S(1.0f));
+            using (var pen = new Pen(Color.FromArgb(45, 255, 255, 255), Math.Max(1, scale)))
+                g.DrawLine(pen, pad + w1 + S(8), metaY + S(5), w - pad - w2 - S(8), metaY + S(5));
+            DrawTracked(g, warn, fontAlertMeta, accent, w - pad - w2, metaY, S(1.0f));
+
+            // 标签
+            string label = alertLabel ?? "距离下班";
+            float lw = TrackedWidth(g, label, fontAlertLabel, S(2.6f));
+            DrawTracked(g, label, fontAlertLabel, Color.FromArgb(235, 255, 255, 255), (w - lw) / 2f, S(44), S(2.6f));
+
+            // 读数
+            string cs;
+            string mmss = AlertClock(out cs);
+            var sf = StringFormat.GenericTypographic;
+            SizeF big = g.MeasureString(mmss, fontAlertBig, 4096, sf);
+            SizeF small = g.MeasureString(cs, fontAlertCs, 4096, sf);
+            float total = big.Width + small.Width;
+            float bx = (w - total) / 2f;
+            float by = S(58);
+            using (var ink = new SolidBrush(Color.White))
+                g.DrawString(mmss, fontAlertBig, ink, bx, by, sf);
+            using (var hot = new SolidBrush(accent))
+                g.DrawString(cs, fontAlertCs, hot, bx + big.Width + S(1.5f), by + AscentPx(g, fontAlertBig) - AscentPx(g, fontAlertCs), sf);
+
+            // 目标时刻
+            string target = "目标 " + (alertTargetText ?? "");
+            float tw = TrackedWidth(g, target, fontAlertMeta, S(0.8f));
+            DrawTracked(g, target, fontAlertMeta, Color.FromArgb(120, 232, 237, 247), (w - tw) / 2f, S(128), S(0.8f));
+
+            // 进度带：这十分钟走完了多少
+            TimeSpan span = alertTarget - DateTime.Now;
+            double frac = 1 - span.TotalSeconds / (StatusBuilder.FinalAlertMinutes * 60.0);
+            frac = Math.Max(0, Math.Min(1, frac));
+            int tx = S(16), ty = S(147), tw2 = w - S(32), th = S(4);
+            using (var track = new SolidBrush(Color.FromArgb(28, 255, 255, 255)))
+                g.FillRectangle(track, tx, ty, tw2, th);
+            if (frac > 0)
+                using (var fill = new SolidBrush(accent))
+                    g.FillRectangle(fill, tx, ty, (int)(tw2 * frac), th);
+            using (var tick = new Pen(Color.FromArgb(150, 0, 0, 0), Math.Max(1, scale)))
+                for (int x = tx; x < tx + tw2; x += S(12))
+                    g.DrawLine(tick, x, ty, x, ty + th);
+
+            DrawBrackets(g, new RectangleF(S(7), S(32), w - S(14), h - S(65)), Color.FromArgb(190, accent));
+            if (!quiet) DrawScanlines(g, new RectangleF(0, bandH, w, h - bandH * 2));
+        }
+
+        /// <summary>收起后的告警横条：还是黑的，上下两条窄斜纹，读数跟着走。</summary>
+        private void PaintAlertStrip(Graphics g, Color accent)
+        {
+            bool quiet = AlertQuiet;
+            int w = Width, h = Height;
+            float phase = quiet ? 0f : (Environment.TickCount - alertEnteredAt) * 0.012f;
+            DrawHazard(g, new RectangleF(0, 0, w, S(6)), accent, phase, S(4));
+            DrawHazard(g, new RectangleF(0, h - S(6), w, S(6)), accent, -phase, S(4));
+
+            int pad = S(14);
+            using (var dot = new SolidBrush(accent))
+                g.FillEllipse(dot, pad, S(14), S(5), S(5));
+            DrawTracked(g, alertLabel ?? "距离下班", fontAlertLabel,
+                Color.FromArgb(220, 232, 237, 247), pad + S(10), S(11), S(1.4f));
+            string right = "目标 " + (alertTargetText ?? "");
+            float rw = TrackedWidth(g, right, fontAlertMeta, S(0.8f));
+            DrawTracked(g, right, fontAlertMeta, Color.FromArgb(120, 232, 237, 247), w - pad - rw, S(11), S(0.8f));
+
+            string cs;
+            string mmss = AlertClock(out cs);
+            var sf = StringFormat.GenericTypographic;
+            SizeF big = g.MeasureString(mmss, fontAlertStrip, 4096, sf);
+            float by = S(27);
+            using (var ink = new SolidBrush(Color.White))
+                g.DrawString(mmss, fontAlertStrip, ink, pad - S(1), by, sf);
+            using (var hot = new SolidBrush(accent))
+                g.DrawString(cs, fontAlertStripCs, hot, pad - S(1) + big.Width + S(1f),
+                    by + AscentPx(g, fontAlertStrip) - AscentPx(g, fontAlertStripCs), sf);
+
+            TimeSpan span = alertTarget - DateTime.Now;
+            double frac = 1 - span.TotalSeconds / (StatusBuilder.FinalAlertMinutes * 60.0);
+            frac = Math.Max(0, Math.Min(1, frac));
+            int ty = h - S(12);
+            using (var track = new SolidBrush(Color.FromArgb(28, 255, 255, 255)))
+                g.FillRectangle(track, pad, ty, w - pad * 2, S(3));
+            if (frac > 0)
+                using (var fill = new SolidBrush(accent))
+                    g.FillRectangle(fill, pad, ty, (int)((w - pad * 2) * frac), S(3));
+        }
+
+        /// <summary>到点那一瞬：整卡切达标色，然后交回普通卡片。</summary>
+        private void PaintAlertDone(Graphics g)
+        {
+            Color ok = theme != null ? theme.success : Color.FromArgb(70, 211, 154);
+            int w = Width, h = Height;
+            float bandH = collapsed ? S(5) : S(7);
+            DrawHazard(g, new RectangleF(0, 0, w, bandH), ok, 0, S(4));
+            DrawHazard(g, new RectangleF(0, h - bandH, w, bandH), ok, 0, S(4));
+
+            string title = "已达标";
+            Font titleFont = collapsed ? fontAlertStrip : fontAlertDone;
+            float tw = TrackedWidth(g, title, titleFont, S(3f));
+            Color ink = Color.FromArgb(235, ok);
+            DrawTracked(g, title, titleFont, ink, (w - tw) / 2f, collapsed ? S(22) : S(64), S(3f));
+
+            if (!collapsed)
+            {
+                string sub = "可以下班了";
+                float sw2 = TrackedWidth(g, sub, fontAlertMeta, S(2.2f));
+                DrawTracked(g, sub, fontAlertMeta, Color.FromArgb(150, 232, 237, 247), (w - sw2) / 2f, S(120), S(2.2f));
+            }
         }
 
         private void DrawGlyph(Graphics g, string kind, Rectangle r, Color color)
@@ -1120,6 +1473,11 @@ namespace WorkCountdown
                 e.source = "local";
                 StartReminder(e);
             };
+            var miAlert = new ToolStripMenuItem("预览终盘告警");
+            miAlert.Click += delegate
+            {
+                if (alertPreview) StopAlertPreview(); else StartAlertPreview();
+            };
             var miIn = new ToolStripMenuItem("在飞书发「1」上班打卡");
             miIn.Click += delegate { SendClock(true); };
             var miOut = new ToolStripMenuItem("在飞书发「2」下班打卡");
@@ -1156,6 +1514,7 @@ namespace WorkCountdown
             m.Items.Add(miCal);
             m.Items.Add(miNext);
             m.Items.Add(miPreview);
+            m.Items.Add(miAlert);
             m.Items.Add(miIn);
             m.Items.Add(miOut);
             m.Items.Add(new ToolStripSeparator());
@@ -1170,6 +1529,8 @@ namespace WorkCountdown
             m.Opening += delegate
             {
                 miNext.Text = "下一个日程：" + NextEventText();
+                miAlert.Text = alertPreview ? "结束终盘告警预览" : "预览终盘告警";
+                miAlert.Enabled = settings.ui.finalAlert != false || alertPreview;
                 bool hasChat = settings.lark.enabled && !string.IsNullOrWhiteSpace(settings.lark.chatId);
                 miIn.Enabled = hasChat;
                 miOut.Enabled = hasChat;
