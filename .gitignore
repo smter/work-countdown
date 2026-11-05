@@ -23,6 +23,9 @@ tools/*.gif
 .vs/
 .idea/
 
+# Raw fonts (subsets under fonts/ are committed)
+tmp-res/
+
 # OS
 Thumbs.db
 desktop.ini
