@@ -116,19 +116,19 @@ namespace WorkCountdown
             Text = "下班倒计时";
             MinimumSize = new Size(S(DesignCollapsedW), S(DesignCollapsedH));
 
-            fontBig = MakeFont("Consolas", 28f, FontStyle.Bold);
-            fontBigText = MakeFont("Microsoft YaHei UI", 17f, FontStyle.Bold);
-            fontStatus = MakeFont("Microsoft YaHei UI", 9f, FontStyle.Regular);
-            fontTiny = MakeFont("Microsoft YaHei UI", 8.5f, FontStyle.Regular);
-            fontSmall = MakeFont("Microsoft YaHei UI", 9f, FontStyle.Regular);
-            fontCollapsedNum = MakeFont("Consolas", 17f, FontStyle.Bold);
-            fontCollapsedLabel = MakeFont("Microsoft YaHei UI", 9f, FontStyle.Regular);
-            fontCollapsedText = MakeFont("Microsoft YaHei UI", 13f, FontStyle.Bold);
-            fontRemindBig = MakeFont("Microsoft YaHei UI", 17f, FontStyle.Bold);
-            fontRemindSmall = MakeFont("Microsoft YaHei UI", 10f, FontStyle.Regular);
-            fontRemindTitle = MakeFont("Microsoft YaHei UI", 17f, FontStyle.Bold);
-            fontRemindMeta = MakeFont("Microsoft YaHei UI", 10f, FontStyle.Regular);
-            fontRemindTime = MakeFont("Microsoft YaHei UI", 12f, FontStyle.Bold);
+            fontBig = CreateRoleFont(FontRole.Timer, 28f, FontStyle.Bold);
+            fontBigText = CreateRoleFont(FontRole.Body, 17f, FontStyle.Bold);
+            fontStatus = CreateRoleFont(FontRole.Body, 9f, FontStyle.Regular);
+            fontTiny = CreateRoleFont(FontRole.Body, 8.5f, FontStyle.Regular);
+            fontSmall = CreateRoleFont(FontRole.Body, 9f, FontStyle.Regular);
+            fontCollapsedNum = CreateRoleFont(FontRole.Timer, 17f, FontStyle.Bold);
+            fontCollapsedLabel = CreateRoleFont(FontRole.Body, 9f, FontStyle.Regular);
+            fontCollapsedText = CreateRoleFont(FontRole.Body, 13f, FontStyle.Bold);
+            fontRemindBig = CreateRoleFont(FontRole.Body, 17f, FontStyle.Bold);
+            fontRemindSmall = CreateRoleFont(FontRole.Body, 10f, FontStyle.Regular);
+            fontRemindTitle = CreateRoleFont(FontRole.Body, 17f, FontStyle.Bold);
+            fontRemindMeta = CreateRoleFont(FontRole.Body, 10f, FontStyle.Regular);
+            fontRemindTime = CreateRoleFont(FontRole.Body, 12f, FontStyle.Bold);
 
             menu = BuildMenu();
             ContextMenuStrip = menu;
@@ -191,8 +191,23 @@ namespace WorkCountdown
             get { return S(ShowLunchRow ? DesignExpandedHLunch : DesignExpandedH); }
         }
 
-        private static Font MakeFont(string family, float size, FontStyle style)
+        /// <summary>字体角色：计时数字用等宽族，正文用界面族。</summary>
+        private enum FontRole
         {
+            Timer,
+            Body,
+        }
+
+        /// <summary>角色字体唯一入口：按角色解析字体族，Widget 内不直接散落字体名。</summary>
+        private static Font CreateRoleFont(FontRole role, float size, FontStyle style)
+        {
+            string family;
+            switch (role)
+            {
+                case FontRole.Timer: family = "Consolas"; break;
+                case FontRole.Body: family = "Microsoft YaHei UI"; break;
+                default: family = FontFamily.GenericSansSerif.Name; break;
+            }
             try { return new Font(family, size, style, GraphicsUnit.Point); }
             catch { return new Font(FontFamily.GenericSansSerif, size, style, GraphicsUnit.Point); }
         }
