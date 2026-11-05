@@ -60,11 +60,37 @@ class VisualCheck {
     aform.MinimumSize=Size.Empty;
     aform.Size=new Size((int)((acollapsed?224:280)*adpi/96),(int)((acollapsed?68:186)*adpi/96));
     Call(aform,"Recompute");
+    Set(aform,"alertEnteredAt",Environment.TickCount-30000);   // 入场动画放完再看静态样子
     using(var abmp=new Bitmap(aform.Width,aform.Height)){
      abmp.SetResolution(adpi,adpi);
      using(var ag=Graphics.FromImage(abmp)) Call(aform,"OnPaint",new PaintEventArgs(ag,new Rectangle(0,0,aform.Width,aform.Height)));
      if(full) abmp.Save(Path.Combine(dir,adpi+"-alert-"+(acollapsed?"col":"exp")+"-"+(alunch?"lunch":"eod")+".png"));
      else if(adpi==144) abmp.Save(Path.Combine(dir,"alert-"+(acollapsed?"strip":"expanded")+"-"+adpi+".png"));
+    }
+    cases++;
+    Call(aform,"OnFormClosing",new FormClosingEventArgs(CloseReason.None,false));
+   }
+  }
+
+  // 终盘强度分档（ADR 0006）：最后 60 秒 / 最后 10 秒，144 DPI 展开态各一帧。
+  foreach(int remain in new int[]{55000,8000}){
+   var aset=new Settings();aset.lark.enabled=false;aset.calendarEnabled=false;
+   aset.ui.edge="free";aset.ui.autoCollapseSeconds=0;aset.ui.theme="midnight";
+   aset.ui.finalAlert=true;aset.ui.alertAccent="theme";
+   aset.mode="fixed";aset.startTime="09:00";aset.endTime="17:00";
+   using(var aform=new WidgetForm(new SettingsStore(),aset)){
+    Set(aform,"scale",1.5f);Set(aform,"collapsed",false);
+    aform.MinimumSize=Size.Empty;aform.Size=new Size(420,315);
+    Call(aform,"Recompute");
+    Call(aform,"StartAlertPreview",600.0);
+    DateTime at=DateTime.Now.AddMilliseconds(remain);
+    Set(aform,"alertTarget",at);Set(aform,"alertTargetText",at.ToString("HH:mm"));
+    Set(aform,"alertEnteredAt",Environment.TickCount-30000);   // 入场已经放完
+    using(var abmp=new Bitmap(420,315)){
+     abmp.SetResolution(144,144);
+     using(var ag=Graphics.FromImage(abmp)) Call(aform,"OnPaint",new PaintEventArgs(ag,new Rectangle(0,0,420,315)));
+     string tag=remain>10000?"hot":"crit";
+     abmp.Save(Path.Combine(dir,full?("144-alert-"+tag+".png"):("alert-"+tag+"-144.png")));
     }
     cases++;
     Call(aform,"OnFormClosing",new FormClosingEventArgs(CloseReason.None,false));
