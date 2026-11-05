@@ -29,3 +29,7 @@ tmp-res/
 # OS
 Thumbs.db
 desktop.ini
+# Visual regression baseline & review copies are kept in git (work-countdown #5)
+!test/baseline/*.png
+!docs/regression/*.png
+!docs/regression/review/*.png

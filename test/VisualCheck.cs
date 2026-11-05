@@ -8,9 +8,11 @@ class VisualCheck {
  static BindingFlags F=BindingFlags.Instance|BindingFlags.NonPublic;
  static void Set(object o,string name,object value){o.GetType().GetField(name,F).SetValue(o,value);}
  static object Call(object o,string name,params object[] args){return o.GetType().GetMethod(name,F).Invoke(o,args);}
- [STAThread] static void Main(){
+ [STAThread] static void Main(string[] args){
   Application.EnableVisualStyles();
-  string dir=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"visual");Directory.CreateDirectory(dir);
+  // args[0]=输出目录（默认 visual）；args[1]="all" 时全量保存每个组合（回归基线模式）。
+  string dir=args.Length>0?args[0]:Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"visual");Directory.CreateDirectory(dir);
+  bool full=args.Length>1&&args[1]=="all";
   int cases=0;
   foreach(float dpi in new float[]{96,144,192})
   foreach(string effect in new string[]{"none","glow","particles","aurora"})
@@ -30,14 +32,15 @@ class VisualCheck {
       using(var bmp=new Bitmap(width,height)){
        bmp.SetResolution(dpi,dpi);
        using(var g=Graphics.FromImage(bmp)) Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,width,height)));
-       if(dpi==144 && !collapsed && (effect=="glow" || effect=="particles" || effect=="aurora")) bmp.Save(Path.Combine(dir,effect+"-"+(meeting?"meeting":"event")+"-"+moment+".png"));
+       if(full) bmp.Save(Path.Combine(dir,dpi+"-"+effect+"-"+(collapsed?"col":"exp")+"-"+(meeting?"mtg":"evt")+"-"+moment+".png"));
+       else if(dpi==144 && !collapsed && (effect=="glow" || effect=="particles" || effect=="aurora")) bmp.Save(Path.Combine(dir,effect+"-"+(meeting?"meeting":"event")+"-"+moment+".png"));
       }cases++;
      }
     }
     Set(form,"reminding",false);
-    using(var bmp=new Bitmap(width,height)) {bmp.SetResolution(dpi,dpi);using(var g=Graphics.FromImage(bmp)) Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,width,height)));if(dpi==144 && effect=="glow") bmp.Save(Path.Combine(dir,collapsed?"compact.png":"expanded.png"));}
+    using(var bmp=new Bitmap(width,height)) {bmp.SetResolution(dpi,dpi);using(var g=Graphics.FromImage(bmp)) Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,width,height)));if(full) bmp.Save(Path.Combine(dir,dpi+"-"+effect+"-"+(collapsed?"col":"exp")+"-idle.png")); else if(dpi==144 && effect=="glow") bmp.Save(Path.Combine(dir,collapsed?"compact.png":"expanded.png"));}
     s.ui.reducedMotion=true;Set(form,"reminding",true);Set(form,"remindAt",DateTime.Now.AddSeconds(-2));
-    using(var bmp=new Bitmap(width,height)) {bmp.SetResolution(dpi,dpi);using(var g=Graphics.FromImage(bmp)) Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,width,height)));}cases++;
+    using(var bmp=new Bitmap(width,height)) {bmp.SetResolution(dpi,dpi);using(var g=Graphics.FromImage(bmp)) Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,width,height)));if(full) bmp.Save(Path.Combine(dir,dpi+"-"+effect+"-"+(collapsed?"col":"exp")+"-quiet.png"));}cases++;
     Call(form,"OnFormClosing",new FormClosingEventArgs(CloseReason.None,false));
    }
   }
@@ -45,7 +48,7 @@ class VisualCheck {
   using(var form=new WidgetForm(new SettingsStore(),demo)){
    Set(form,"scale",1.5f);Set(form,"collapsed",false);form.MinimumSize=Size.Empty;form.Size=new Size(420,315);Call(form,"Recompute");
    Set(form,"remindEvent",new ReminderEvent {title="产品设计评审",detail="确认交互方案与本周排期",place="12F · 会议室 A",start=Reminders.FormatStart(DateTime.Now.AddMinutes(5)),end=Reminders.FormatStart(DateTime.Now.AddMinutes(35)),source="lark"});
-   for(int moment=0;moment<9000;moment+=50){Set(form,"reminding",moment<7960);Set(form,"remindAt",DateTime.Now.AddMilliseconds(-moment));using(var bmp=new Bitmap(420,315)){bmp.SetResolution(144,144);using(var g=Graphics.FromImage(bmp))Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,420,315)));bmp.Save(Path.Combine(dir,"demo-"+moment.ToString("D5")+".png"));}}
+   for(int moment=0;moment<9000;moment+=50){Set(form,"reminding",moment<7960);Set(form,"remindAt",DateTime.Now.AddMilliseconds(-moment));using(var bmp=new Bitmap(420,315)){bmp.SetResolution(144,144);using(var g=Graphics.FromImage(bmp))Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,420,315)));if(!full) bmp.Save(Path.Combine(dir,"demo-"+moment.ToString("D5")+".png"));}}
    Call(form,"OnFormClosing",new FormClosingEventArgs(CloseReason.None,false));
   }
   var settings=new Settings();settings.lark.enabled=false;settings.calendarEnabled=false;
@@ -56,6 +59,20 @@ class VisualCheck {
    using(var bmp=new Bitmap(dialog.Width,dialog.Height)){dialog.DrawToBitmap(bmp,new Rectangle(Point.Empty,bmp.Size));bmp.Save(Path.Combine(dir,"appearance.png"));}
    dialog.Close();
   }
-  Console.WriteLine("PASS: "+cases+" rendering cases at 100/150/200%; effects, long text, quiet mode and transition boundaries.");
+  // 附加覆盖：深浅主题 × 低动效，长文本提醒（展开态 150%）。
+  if(full) foreach(string themeId in new string[]{"midnight","ivory"})
+  foreach(bool quiet in new bool[]{false,true}){
+   var ts=new Settings();ts.lark.enabled=false;ts.calendarEnabled=false;ts.ui.edge="free";ts.ui.reminderEffect="glow";ts.ui.theme=themeId;ts.ui.reducedMotion=quiet;
+   using(var form=new WidgetForm(new SettingsStore(),ts)){
+    Set(form,"scale",1.5f);Set(form,"collapsed",false);form.MinimumSize=Size.Empty;form.Size=new Size(420,315);Call(form,"Recompute");
+    Set(form,"remindEvent",new ReminderEvent { title="产品需求评审 · 项目进度与下一阶段规划与验收标准讨论 🗓",detail="明确负责人、验收时间及联调计划\n换行不影响布局\n会议时间较长时 detail 会换到更多行",place="12F · 南侧会议室 A（near 洽谈区）",start=Reminders.FormatStart(DateTime.Now.AddMinutes(5)),end=Reminders.FormatStart(DateTime.Now.AddMinutes(35)),source="lark"});
+    Set(form,"reminding",true);Set(form,"remindAt",DateTime.Now.AddMilliseconds(-800));
+    using(var bmp=new Bitmap(form.Width,form.Height)){bmp.SetResolution(144,144);using(var g=Graphics.FromImage(bmp)) Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,form.Width,form.Height)));bmp.Save(Path.Combine(dir,"theme-"+themeId+"-"+(quiet?"quiet":"motion")+"-reminder.png"));}
+    Set(form,"reminding",false);
+    using(var bmp=new Bitmap(form.Width,form.Height)){bmp.SetResolution(144,144);using(var g=Graphics.FromImage(bmp)) Call(form,"OnPaint",new PaintEventArgs(g,new Rectangle(0,0,form.Width,form.Height)));bmp.Save(Path.Combine(dir,"theme-"+themeId+"-"+(quiet?"quiet":"motion")+"-idle.png"));}
+    Call(form,"OnFormClosing",new FormClosingEventArgs(CloseReason.None,false));
+   }cases+=2;
+  }
+  Console.WriteLine("PASS: "+cases+" rendering cases; out="+dir+(full?" (baseline all)":""));
  }
 }
