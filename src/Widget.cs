@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
 using System.Globalization;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Text.RegularExpressions;
@@ -117,19 +118,19 @@ namespace WorkCountdown
             Text = "下班倒计时";
             MinimumSize = new Size(S(DesignCollapsedW), S(DesignCollapsedH));
 
-            fontBig = CreateRoleFont(FontRole.Timer, 28f, FontStyle.Bold);
-            fontBigText = CreateRoleFont(FontRole.Body, 17f, FontStyle.Bold);
+            fontBig = CreateRoleFont(FontRole.Timer, 28f, FontStyle.Regular);
+            fontBigText = CreateRoleFont(FontRole.Body, 17f, FontStyle.Regular);
             fontStatus = CreateRoleFont(FontRole.Body, 9f, FontStyle.Regular);
             fontTiny = CreateRoleFont(FontRole.Body, 8.5f, FontStyle.Regular);
             fontSmall = CreateRoleFont(FontRole.Body, 9f, FontStyle.Regular);
-            fontCollapsedNum = CreateRoleFont(FontRole.Timer, 17f, FontStyle.Bold);
+            fontCollapsedNum = CreateRoleFont(FontRole.Timer, 17f, FontStyle.Regular);
             fontCollapsedLabel = CreateRoleFont(FontRole.Body, 9f, FontStyle.Regular);
-            fontCollapsedText = CreateRoleFont(FontRole.Body, 13f, FontStyle.Bold);
-            fontRemindBig = CreateRoleFont(FontRole.Body, 17f, FontStyle.Bold);
+            fontCollapsedText = CreateRoleFont(FontRole.Body, 13f, FontStyle.Regular);
+            fontRemindBig = CreateRoleFont(FontRole.Body, 17f, FontStyle.Regular);
             fontRemindSmall = CreateRoleFont(FontRole.Body, 10f, FontStyle.Regular);
-            fontRemindTitle = CreateRoleFont(FontRole.Body, 17f, FontStyle.Bold);
+            fontRemindTitle = CreateRoleFont(FontRole.Body, 17f, FontStyle.Regular);
             fontRemindMeta = CreateRoleFont(FontRole.Body, 10f, FontStyle.Regular);
-            fontRemindTime = CreateRoleFont(FontRole.Body, 12f, FontStyle.Bold);
+            fontRemindTime = CreateRoleFont(FontRole.Timer, 12f, FontStyle.Regular);
 
             menu = BuildMenu();
             ContextMenuStrip = menu;
@@ -209,16 +210,74 @@ namespace WorkCountdown
             return !string.IsNullOrEmpty(text) && ReadingPattern.IsMatch(text);
         }
 
+        // 内置字体子集：由 tools/make-font-subsets.py 生成，经 csc /res 内嵌进 exe（ADR 0005）。
+        private const string TimerFontResource = "WorkCountdown.fonts.MapleMono-NF-CN-ExtraBold-subset.ttf";
+        private const string BodyFontResource = "WorkCountdown.fonts.SarasaMonoSC-SemiBold-subset.ttf";
+        private static readonly object fontInitLock = new object();
+        private static byte[] timerFontData, bodyFontData;   // AddMemoryFont 之后仍持有数据，防止被回收
+        private static string embeddedTimerFamily, embeddedBodyFamily;
+        private static bool embeddedFontsTried;
+
+        /// <summary>把内嵌 ttf 读进 PrivateFontCollection，返回集合内的真实族名；失败返回 null（out 持有数据防回收）。</summary>
+        private static string TryLoadEmbeddedFont(string resourceName, PrivateFontCollection target, out byte[] data)
+        {
+            data = null;
+            try
+            {
+                using (System.IO.Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName))
+                {
+                    if (stream == null) return null;
+                    byte[] bytes = new byte[stream.Length];
+                    int read = 0;
+                    while (read < bytes.Length) { int n = stream.Read(bytes, read, (int)bytes.Length - read); if (n <= 0) break; read += n; }
+                    var handle = GCHandle.Alloc(bytes, GCHandleType.Pinned);
+                    try { target.AddMemoryFont(handle.AddrOfPinnedObject(), bytes.Length); }
+                    finally { handle.Free(); }
+                    if (target.Families.Length == 0) return null;
+                    data = bytes;
+                    return target.Families[target.Families.Length - 1].Name;
+                }
+            }
+            catch { return null; }
+        }
+
+        /// <summary>惰性加载内置子集；只跑一次。</summary>
+        private static void EnsureEmbeddedFonts()
+        {
+            lock (fontInitLock)
+            {
+                if (embeddedFontsTried) return;
+                embeddedFontsTried = true;
+                var fonts = new PrivateFontCollection();
+                embeddedTimerFamily = TryLoadEmbeddedFont(TimerFontResource, fonts, out timerFontData);
+                embeddedBodyFamily = TryLoadEmbeddedFont(BodyFontResource, fonts, out bodyFontData);
+            }
+        }
+
+        /// <summary>角色族三级解析（ADR 0005）：内置子集 → 系统已装同族 → 回退 Consolas / Microsoft YaHei UI。</summary>
+        private static string ResolveRoleFamily(FontRole role)
+        {
+            EnsureEmbeddedFonts();
+            string embedded = role == FontRole.Timer ? embeddedTimerFamily : embeddedBodyFamily;
+            if (!string.IsNullOrEmpty(embedded)) return embedded;
+            // 二级：按关键字找系统已安装的同族（GDI+ 的 Font 构造会静默替换成 Microsoft Sans Serif，
+            // 所以这里必须先在 InstalledFontCollection 里确认存在，绝不盲试族名。）
+            string contains = role == FontRole.Timer ? "Maple Mono" : "Sarasa Mono";
+            try
+            {
+                var installed = new InstalledFontCollection();
+                foreach (var family in installed.Families)
+                    if (family.Name.IndexOf(contains, StringComparison.OrdinalIgnoreCase) >= 0) return family.Name;
+            }
+            catch { }
+            // 三级：已知存在的系统族；构造仍包 try/catch，最后兜底 GenericSansSerif。
+            return role == FontRole.Timer ? "Consolas" : "Microsoft YaHei UI";
+        }
+
         /// <summary>角色字体唯一入口：按角色解析字体族，Widget 内不直接散落字体名。</summary>
         private static Font CreateRoleFont(FontRole role, float size, FontStyle style)
         {
-            string family;
-            switch (role)
-            {
-                case FontRole.Timer: family = "Consolas"; break;
-                case FontRole.Body: family = "Microsoft YaHei UI"; break;
-                default: family = FontFamily.GenericSansSerif.Name; break;
-            }
+            string family = ResolveRoleFamily(role);
             try { return new Font(family, size, style, GraphicsUnit.Point); }
             catch { return new Font(FontFamily.GenericSansSerif, size, style, GraphicsUnit.Point); }
         }

@@ -309,14 +309,19 @@ internal static class Test
         var isReading = widgetType.GetMethod("IsPureReading", BindingFlags.Static | BindingFlags.NonPublic);
         Func<string, bool> reading = text => (bool)isReading.Invoke(null, new object[] { text });
         var wf = new WidgetForm(new SettingsStore(), new Settings());
+        var roleType = widgetType.GetNestedType("FontRole", BindingFlags.Public | BindingFlags.NonPublic);
         Func<bool, Font> RoleFont = timer => (Font)widgetType.GetField(timer ? "fontBig" : "fontBigText", flags).GetValue(wf);
         Action<string, CardStatus, bool, float> CheckBigRole = (name, card, expectTimer, expectSize) =>
         {
             Check(name + " 读数判定", reading(card.big).ToString(), expectTimer.ToString());
             var f = RoleFont(reading(card.big));
-            Check(name + " 角色(" + card.state + " 「" + card.big + "」)",
-                f.FontFamily.Name + "/" + f.Size.ToString("0.#"),
-                (expectTimer ? "Consolas" : "Microsoft YaHei UI") + "/" + expectSize.ToString("0.#"));
+            var expectFamily = (string)widgetType.GetMethod("ResolveRoleFamily", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { Enum.Parse(roleType, expectTimer ? "Timer" : "Body") });
+            // FontFamily.Name 可能返回本地化族名（如「等距更纱黑体 SC Semibold」），用同族名构造的字体对照。
+            using (var probe = new Font(expectFamily, 10))
+                Check(name + " 角色(" + card.state + " 「" + card.big + "」)",
+                    f.FontFamily.Name + "/" + f.Size.ToString("0.#"),
+                    probe.FontFamily.Name + "/" + expectSize.ToString("0.#"));
         };
 
         Func<string, CardStatus> BuildState = when =>
@@ -354,6 +359,32 @@ internal static class Test
         CheckBigRole("Working 大数字", BuildState("working"), true, 28f);   // 09:57:00
         CheckBigRole("Overtime 大数字", BuildState("overtime"), true, 28f); // 00:00:00
         CheckBigRole("Done 大数字", BuildState("done"), true, 28f);         // 10h42m
+        // 23. 内置字体子集与三级回退（ADR 0005）：一级内嵌加载、二三级回退不崩且不落 Microsoft Sans Serif。
+        var staticFlags = BindingFlags.Static | BindingFlags.NonPublic;
+        widgetType.GetMethod("EnsureEmbeddedFonts", staticFlags).Invoke(null, null);
+        var embeddedTimer = (string)widgetType.GetField("embeddedTimerFamily", staticFlags).GetValue(null);
+        var embeddedBody = (string)widgetType.GetField("embeddedBodyFamily", staticFlags).GetValue(null);
+        Check("内置子集加载 Timer", (embeddedTimer != null).ToString(), "True");
+        Check("内置子集加载 Body", (embeddedBody != null).ToString(), "True");
+        Check("Timer 子集族名", embeddedTimer ?? "(null)", "Maple Mono NF CN ExtraBold");
+        Check("Body 子集族名", embeddedBody ?? "(null)", "Sarasa Mono SC SemiBold");
+
+        // 强制内置子集失效（模拟一级失败），应走二级系统族或三级回退，绝不返回 Microsoft Sans Serif。
+        widgetType.GetField("embeddedTimerFamily", staticFlags).SetValue(null, null);
+        widgetType.GetField("embeddedBodyFamily", staticFlags).SetValue(null, null);
+        var resolve = widgetType.GetMethod("ResolveRoleFamily", staticFlags);
+        var fbTimer = (string)resolve.Invoke(null, new object[] { Enum.Parse(roleType, "Timer") });
+        var fbBody = (string)resolve.Invoke(null, new object[] { Enum.Parse(roleType, "Body") });
+        Check("Timer 回退合法", (fbTimer == "Consolas" || fbTimer.IndexOf("Maple Mono", StringComparison.OrdinalIgnoreCase) >= 0).ToString(), "True");
+        Check("Body 回退合法", (fbBody == "Microsoft YaHei UI" || fbBody.IndexOf("Sarasa Mono", StringComparison.OrdinalIgnoreCase) >= 0).ToString(), "True");
+        Check("回退不落默认替换字体", (fbTimer != "Microsoft Sans Serif" && fbBody != "Microsoft Sans Serif").ToString(), "True");
+
+        // 提醒层时间段走计时角色（fontRemindTime = Timer，12pt，自带字重不加粗）。
+        var remindTimeFont = (Font)widgetType.GetField("fontRemindTime", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(wf);
+        Check("提醒时间段归 Timer", remindTimeFont.FontFamily.Name, embeddedTimer ?? "Maple Mono NF CN ExtraBold");
+        Check("提醒时间段 12pt", remindTimeFont.Size.ToString("0.#"), "12");
+        Check("时间段区间算读数", reading("15:30–16:00").ToString(), "True");
+
         Console.WriteLine();
         Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");
         Environment.Exit(failures == 0 ? 0 : 1);

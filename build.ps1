@@ -119,6 +119,8 @@ $cscArgs = @(
     ('/win32icon:' + $iconPath),
     ('/win32manifest:' + $manifestPath),
     ('/out:' + $exe),
+    ('/res:' + (Join-Path $root 'fonts\MapleMono-NF-CN-ExtraBold-subset.ttf') + ',WorkCountdown.fonts.MapleMono-NF-CN-ExtraBold-subset.ttf'),
+    ('/res:' + (Join-Path $root 'fonts\SarasaMonoSC-SemiBold-subset.ttf') + ',WorkCountdown.fonts.SarasaMonoSC-SemiBold-subset.ttf'),
     '/reference:System.dll',
     '/reference:System.Core.dll',
     '/reference:System.Drawing.dll',
