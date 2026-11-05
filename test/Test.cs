@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Globalization;
+using System.Reflection;
 using WorkCountdown;
 
 internal static class Test
@@ -301,6 +303,57 @@ internal static class Test
         Check("到点即达标", st21b.state.ToString(), "Overtime");
         Check("达标同时给出工时对照", st21b.extra, "工时 8h01m / 应勤 9h00m · 下班后发「2」记录");
 
+        // 22. 大数字按内容判定角色（ADR 0005）：六种状态逐一断言其大数字用的角色与字号。
+        var flags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic;
+        var widgetType = typeof(WidgetForm);
+        var isReading = widgetType.GetMethod("IsPureReading", BindingFlags.Static | BindingFlags.NonPublic);
+        Func<string, bool> reading = text => (bool)isReading.Invoke(null, new object[] { text });
+        var wf = new WidgetForm(new SettingsStore(), new Settings());
+        Func<bool, Font> RoleFont = timer => (Font)widgetType.GetField(timer ? "fontBig" : "fontBigText", flags).GetValue(wf);
+        Action<string, CardStatus, bool, float> CheckBigRole = (name, card, expectTimer, expectSize) =>
+        {
+            Check(name + " 读数判定", reading(card.big).ToString(), expectTimer.ToString());
+            var f = RoleFont(reading(card.big));
+            Check(name + " 角色(" + card.state + " 「" + card.big + "」)",
+                f.FontFamily.Name + "/" + f.Size.ToString("0.#"),
+                (expectTimer ? "Consolas" : "Microsoft YaHei UI") + "/" + expectSize.ToString("0.#"));
+        };
+
+        Func<string, CardStatus> BuildState = when =>
+        {
+            var day = when == "rest" ? new DateTime(2026, 11, 7) : new DateTime(2026, 11, 3); // 周六 / 周二
+            var cs = new Settings();
+            cs.mode = "flex"; cs.flexMinutes = 630; cs.startTime = "09:00"; cs.lunchDeduct = false;
+            cs.lark.enabled = true; cs.lark.chatId = "oc_test";
+            AttendanceSnapshot sn = null;                     // 未打卡 / 上班前 / 休息日：无打卡源
+            if (when == "working" || when == "overtime")
+            {
+                sn = new AttendanceSnapshot();
+                sn.ok = true;
+                sn.clockIn = new DateTime(2026, 11, 3, 9, 27, 0);
+            }
+            if (when == "done")
+            {
+                sn = new AttendanceSnapshot();
+                sn.ok = true;
+                sn.clockIn = new DateTime(2026, 11, 3, 9, 27, 0);
+                sn.clockOut = new DateTime(2026, 11, 3, 20, 9, 0);
+            }
+            var timeOfDay = when == "rest" ? new TimeSpan(10, 0, 0)
+                : when == "before" ? new TimeSpan(8, 30, 0)
+                : when == "notclock" ? new TimeSpan(9, 40, 0)
+                : when == "working" ? new TimeSpan(10, 0, 0)
+                : when == "overtime" ? new TimeSpan(19, 57, 0)
+                : new TimeSpan(20, 20, 0);
+            return StatusBuilder.Build(cs, sn, day.Date + timeOfDay, Themes.Get("midnight"));
+        };
+
+        CheckBigRole("Rest 大数字", BuildState("rest"), false, 17f);        // 今天休息
+        CheckBigRole("BeforeWork 大数字", BuildState("before"), true, 28f); // 00:30:00
+        CheckBigRole("NotClockedIn 大数字", BuildState("notclock"), true, 28f); // 00:40:00
+        CheckBigRole("Working 大数字", BuildState("working"), true, 28f);   // 09:57:00
+        CheckBigRole("Overtime 大数字", BuildState("overtime"), true, 28f); // 00:00:00
+        CheckBigRole("Done 大数字", BuildState("done"), true, 28f);         // 10h42m
         Console.WriteLine();
         Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILURES");
         Environment.Exit(failures == 0 ? 0 : 1);

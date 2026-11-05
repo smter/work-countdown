@@ -7,6 +7,7 @@ using System.Drawing.Text;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace WorkCountdown
@@ -196,6 +197,16 @@ namespace WorkCountdown
         {
             Timer,
             Body,
+        }
+
+        /// <summary>整串判定：整体是时刻（09:57、09:57:00、25:03:00）、时长（9h30m）或时刻区间（15:30–16:00）才算读数；含中文一律归正文（ADR 0005）。</summary>
+        private static readonly Regex ReadingPattern = new Regex(
+            @"^\d{1,3}(:\d{2}){1,2}$|^\d+h\d+m$|^\d{1,2}:\d{2}\s*[–—~-]\s*\d{1,2}:\d{2}$",
+            RegexOptions.Compiled);
+
+        private static bool IsPureReading(string text)
+        {
+            return !string.IsNullOrEmpty(text) && ReadingPattern.IsMatch(text);
         }
 
         /// <summary>角色字体唯一入口：按角色解析字体族，Widget 内不直接散落字体名。</summary>
@@ -823,7 +834,7 @@ namespace WorkCountdown
             rectChevron=new Rectangle(Width-S(34),S(12),iconSize,iconSize);
             DrawGlyph(g,"gear",rectGear,dim); DrawGlyph(g,"refresh",rectRefresh,fetching?status.accent:dim); DrawGlyph(g,"chevron",rectChevron,dim);
             Line(g,status.bigLabel,fontSmall,muted,new RectangleF(pad,S(46),w,S(20)),1,false);
-            Font basis=status.bigIsClock?fontBig:fontBigText;
+            Font basis=IsPureReading(status.big)?fontBig:fontBigText;
             Font fit=FitFont(g,status.big,basis,w);
             Line(g,status.big,fit,theme.textMain,new RectangleF(pad-S(2),S(66),w+S(2),S(46)),1,false);
             if(fit!=basis) fit.Dispose();
@@ -859,7 +870,7 @@ namespace WorkCountdown
             string right=string.IsNullOrEmpty(status.targetText)?"":"下班 "+status.targetText;
             if(ShowLunchRow && status.lunchCounting) right="休 "+(status.lunchValue??"").Replace("还剩 ","");
             Line(g,right,fontCollapsedLabel,muted,new RectangleF(Width-pad-S(86),S(7),S(86),S(20)),1,true);
-            Line(g,status.big,status.bigIsClock?fontCollapsedNum:fontCollapsedText,theme.textMain,
+            Line(g,status.big,IsPureReading(status.big)?fontCollapsedNum:fontCollapsedText,theme.textMain,
                 new RectangleF(pad-S(1),S(27),w,S(27)),1,false);
             DrawProgress(g,pad,S(59),Width-pad*2,S(3));
             if(lastFetchFailed) Line(g,"!",fontStatus,Color.FromArgb(242,179,76),new RectangleF(Width-pad-S(14),S(32),S(14),S(20)),1,true);
